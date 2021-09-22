@@ -112,3 +112,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# Added manually
+demos/CCM.IU.mseed
+
+# macOS
+*.DS_Store
