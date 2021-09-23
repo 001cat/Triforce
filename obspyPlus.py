@@ -3,6 +3,13 @@ import obspy,os
 import numpy as np
 import matplotlib.pyplot as plt
 from Triforce.fftOperation import Y2F,F2Y
+from Triforce.utils import get_current_memory
+
+def randString(N):
+    import random,string
+    ''' Return a random string '''
+    return ''.join([random.choice(string.ascii_letters + string.digits) for i in range(N)])
+
 
 def seismicPreProc(stIn,inv,starttime=None,endtime=None,freqmin=0.01,freqmax=None, 
                    reSampleDelta=False,merge=True,rmResp=True,zerophase=True,**kwargs):
@@ -41,19 +48,31 @@ def seismicPreProc(stIn,inv,starttime=None,endtime=None,freqmin=0.01,freqmax=Non
         st.detrend(type='linear')
     st.taper(None,max_length=border)
     if reSampleDelta:
+        # print('reSampling ...')
         st.filter('lowpass',corners=6,freq=0.5/reSampleDelta/2,zerophase=True)
         for tr in st:
             interpFrom = starttime+((tr.stats.starttime-starttime)//reSampleDelta+1)*reSampleDelta
             tr.interpolate(1.0/reSampleDelta,starttime=max(starttime,interpFrom))
     if rmResp:
+        # print('removing response ...')
         st.attach_response(inv)
         for tr in st:
             if tr.stats.response.response_stages[0].input_units == 'PA':
-                tr.remove_response(pre_filt=[0.001,0.002,1000,2000])
+                outputUnit = 'VEL'
             elif tr.stats.response.response_stages[0].input_units in ('M/S','M'):
-                tr.remove_response(pre_filt=[0.001,0.002,1000,2000], output='DISP')
+                outputUnit='DISP'
             else:
                 print(f'Unknown input unit, no response removed: {tr.get_id()}')
+                continue
+            try:
+                respYe = kwargs['rmFunc']
+            except:
+                respYe = False
+            if respYe:
+                tr = rmRESPYe(tr,inv,freqmin=0.002,freqmax=min(1000,1/tr.stats.delta/2),fftw=True)
+            else:
+                tr.remove_response(pre_filt=[0.001,0.002,1000,2000],output=outputUnit)
+
     if (freqmin is None) and freqmax:
         st.filter('lowpass',freq=freqmax,zerophase=zerophase)
     elif freqmin and (freqmax is None):
@@ -102,13 +121,18 @@ def rmRESPYe(trIn,xmlResp,freqmin=0.01,freqmax=0.2,copy=False,fftw=False):
     f1,f4 = f2*0.8,f3*1.2
     xml2respBin = '/home/ayu/Packages/IRIS/xml2resp'
     evalrespBin = '/home/ayu/Packages/IRIS/evalresp'
-    os.system(f'mkdir tmpdir')
-    os.system(f'{xml2respBin} -o tmpdir/RESP.{net}.{sta} {xmlResp} > /dev/null 2>&1')
-    os.system(f'cd tmpdir && '+
+
+    tmpDir = f'tmp{randString(10)}'
+    os.system(f'mkdir {tmpDir}')
+    if type(xmlResp) == obspy.Inventory:
+        xmlResp.write(f'{tmpDir}/inv.xml',format='stationxml')
+        xmlResp = f'{tmpDir}/inv.xml'
+    os.system(f'{xml2respBin} -o {tmpDir}/RESP.{net}.{sta} {xmlResp} > /dev/null 2>&1')
+    os.system(f'cd {tmpDir} && '+
     f'{evalrespBin} {sta} {cha} {year} {jday} {f1} {f4} 100 -f RESP.{net}.{sta} -v > /dev/null 2>&1')
-    freq,amp = np.loadtxt(f'tmpdir/AMP.{tr.id}').T
-    _,pha = np.loadtxt(f'tmpdir/PHASE.{tr.id}').T
-    os.system(f'rm -r tmpdir')
+    freq,amp = np.loadtxt(f'{tmpDir}/AMP.{tr.id}').T
+    _,pha = np.loadtxt(f'{tmpDir}/PHASE.{tr.id}').T
+    os.system(f'rm -r {tmpDir}')
     # amp *= 0.000000001
     pha *= np.pi/180
 
