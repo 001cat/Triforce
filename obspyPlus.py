@@ -1,15 +1,26 @@
-import re
 import obspy,os
 import numpy as np
 import matplotlib.pyplot as plt
 from Triforce.fftOperation import Y2F,F2Y
 from Triforce.utils import get_current_memory
 
+def midnightBefore(t):
+    return obspy.UTCDateTime(t.year,t.month,t.day)
+
+def genDateTimeWins(starttime,endtime,winL=86400):
+    starttime = obspy.UTCDateTime(starttime)
+    endtime   = obspy.UTCDateTime(endtime)
+    t0 = starttime
+    winLst = []
+    while t0< endtime:
+        winLst.append((t0,t0+winL))
+        t0 += winL
+    return winLst
+
 def randString(N):
     import random,string
     ''' Return a random string '''
     return ''.join([random.choice(string.ascii_letters + string.digits) for i in range(N)])
-
 
 def seismicPreProc(stIn,inv,starttime=None,endtime=None,freqmin=0.01,freqmax=None, 
                    reSampleDelta=False,merge=True,rmResp=True,zerophase=True,**kwargs):
@@ -30,7 +41,7 @@ def seismicPreProc(stIn,inv,starttime=None,endtime=None,freqmin=0.01,freqmax=Non
     st = stIn.copy()
 
     if reSampleDelta or rmResp or (freqmin is not None) or (freqmax is not None):
-        border = 500
+        border = 500 if 'border' not in kwargs.keys() else kwargs['border']
     else:
         border = 0
     
@@ -51,8 +62,11 @@ def seismicPreProc(stIn,inv,starttime=None,endtime=None,freqmin=0.01,freqmax=Non
         # print('reSampling ...')
         st.filter('lowpass',corners=6,freq=0.5/reSampleDelta/2,zerophase=True)
         for tr in st:
-            interpFrom = starttime+((tr.stats.starttime-starttime)//reSampleDelta+1)*reSampleDelta
-            tr.interpolate(1.0/reSampleDelta,starttime=max(starttime,interpFrom))
+            if (starttime-border) >= tr.stats.starttime:
+                interpStart = starttime-border
+            else:
+                interpStart = starttime-border + np.ceil((tr.stats.starttime-(starttime-border))/reSampleDelta)*reSampleDelta
+            tr.interpolate(1.0/reSampleDelta,starttime=interpStart)
     if rmResp:
         # print('removing response ...')
         st.attach_response(inv)
@@ -65,7 +79,7 @@ def seismicPreProc(stIn,inv,starttime=None,endtime=None,freqmin=0.01,freqmax=Non
                 print(f'Unknown input unit, no response removed: {tr.get_id()}')
                 continue
             try:
-                respYe = kwargs['rmFunc']
+                respYe = kwargs['respYe']
             except:
                 respYe = False
             if respYe:
@@ -84,10 +98,11 @@ def seismicPreProc(stIn,inv,starttime=None,endtime=None,freqmin=0.01,freqmax=Non
  
     for i,tr in zip(range(len(st)-1,-1,-1),st[::-1]):
         minL = 2*border
-        if freqmin is not None:
-            minL += 10/freqmin
+        # if freqmin is not None:
+        #     minL = max(minL,10/freqmin)
         if tr.stats.endtime - tr.stats.starttime > minL:
             tr.trim(tr.stats.starttime+border,tr.stats.endtime-border)
+            pass
         else:
             del st[i]
             
@@ -171,6 +186,17 @@ def stStartEndTime(stIn,secRound=False):
     if secRound:
         starttime,endtime = round2sec(starttime),round2sec(endtime)
     return starttime,endtime
+def stStartEndTimeAllIn(stIn):
+    '''Get last start time and first end time of stream'''
+    starttime = stIn[0].stats.starttime
+    endtime   = stIn[0].stats.endtime
+    for tr in stIn:
+        if tr.stats.starttime > starttime:
+            starttime = tr.stats.starttime
+        if tr.stats.endtime < endtime:
+            endtime = tr.stats.endtime
+    return starttime,endtime
+
 
 def sepLargeMseed(mseedIn,seedID,outdir,starttime,endtime,segL=86400):
     ''' Seperate Large miniseed file into smaller ones that could be read by obspy 
