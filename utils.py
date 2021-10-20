@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from netCDF4 import Dataset
 
-
 class GeoMap():
     # if the map is a global one, you'd better set lons like: -180,...,180
     def __init__(self,lons,lats,z):
@@ -13,7 +12,6 @@ class GeoMap():
             self.type = '-180 to 180'
         else:
             self.type = '0 to 360'
-
     def value(self,lon,lat):
         if (lon < 0) and self.type == '0 to 360':
             lon = lon + 360
@@ -39,6 +37,11 @@ class GeoMap():
 
         z = z0+(z1-z0)*dy/Dy+(z2-z0)*dx/Dx+(z0+z3-z1-z2)*dx*dy/Dx/Dy
         return z
+    def plot(self):
+        XX,YY = np.meshgrid(self.lons,self.lats)
+        plt.figure()
+        plt.pcolormesh(XX,YY,self.z)
+        
 
 def gaussFun(A,mu,sig,t):
     return A*np.exp(-((t-mu)**2)/(2*sig*sig))

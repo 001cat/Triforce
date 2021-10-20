@@ -8,7 +8,12 @@ from matplotlib.colors import LinearSegmentedColormap
 labelFont = {'weight':'normal','size':14}
 titleFont = {'weight':'bold','size':16}
 
+import os,pycpt;
+cvcpt = pycpt.load.gmtColormap(os.path.dirname(__file__)+'/cv_original.cpt')
+rbcpt = pycpt.load.gmtColormap(os.path.dirname(__file__)+'/rainbow.cpt').reversed()
+
 coastlineData = '/home/ayu/SubdInv/models/ne_10m_coastline/ne_10m_coastline'
+physioData = os.path.dirname(__file__)+'/physio/physio'
 
 def plotLocalBase(minlon, maxlon, minlat, maxlat,resolution='c',coastline=None,figwidth=None,ax=None,
              dlat=5.0, dlon=5.0, topo=None):
@@ -41,14 +46,15 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat,resolution='c',coastline=None,f
         else:
             m.drawcoastlines()
         m.drawcountries(linewidth=1)
-        m.drawparallels(np.arange(-90.0,90.0,dlat), labels=[1,0,0,0])
-        m.drawmeridians(np.arange(-180.0,180.0,dlon), labels=[0,0,0,1])
-        m.drawstates(color='k', linewidth=1.,linestyle='dashed')
+        m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,0])
+        m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[0,0,0,1])
+        m.drawstates(color='k', linewidth=0.5,linestyle='solid')
+        m.readshapefile(physioData,'physio',linewidth=0.25)
         return (fig,m)
     elif topo is True:
         m.etopo(scale=1.0)
-        m.drawparallels(np.arange(-90.0,90.0,dlat), labels=[1,0,0,0])
-        m.drawmeridians(np.arange(-180.0,180.0,dlon), labels=[0,0,0,1])
+        m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,0])
+        m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[0,0,0,1])
         return (fig,m)
     else:
         raise ValueError('Plot with topo data has not been done yet!')
@@ -176,6 +182,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     plt.ion()
     print('Testing ...')
-    # plotLocalBase(-172.0, -122.0, 52.0, 72.0,resolution='l')
+    plotLocalBase(-172.0, -122.0, 52.0, 72.0,resolution='l')
+    fig,m = plotLocalBase(-130,-110,30,50,resolution='l')
     # fig,m = plotLocalBase(-130,-110,30,50,coastline=coastlineData,topo='True')
-    plotGlobalBase()
+    # plotGlobalBase()
