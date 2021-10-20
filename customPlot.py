@@ -1,5 +1,6 @@
 import numpy as np
 import cartopy.crs as ccrs
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap
 from geographiclib.geodesic import Geodesic
@@ -171,6 +172,16 @@ def mkcmap(inM,name='NewColorMap',N=256):
         alpha.append((  inM[i,0],inM[i,4],inM[i,4]))
     cdict = {'red':red, 'green':green, 'blue':blue, 'alpha':alpha}
     return LinearSegmentedColormap(name,cdict,N)
+
+class CustomNorm(mpl.colors.Normalize):
+    def __init__(self,x,y,clip=False):
+        super().__init__(x[0],x[-1],clip)
+        self.x,self.y = x,y
+    def __call__(self,value,clip=None):
+        if type(value) == np.ma.masked_array:
+            return np.ma.masked_array(np.interp(value,self.x,self.y),mask=value.mask)
+        else:
+            return np.ma.masked_array(np.interp(value,self.x,self.y))
 
 
 # fig, axes = plt.subplots(2,3,figsize=[12,8])
