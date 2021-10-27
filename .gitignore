@@ -115,6 +115,7 @@ dmypy.json
 
 
 # Added manually
+physio
 demos/CCM.IU.mseed
 
 # macOS
