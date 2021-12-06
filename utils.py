@@ -23,24 +23,54 @@ class GeoMap():
         if (lat-self.lats[0]) * (lat-self.lats[-1]) > 0:
             # raise ValueError('Latitude is out of range!')
             return np.nan
-
         i = np.where(self.lons-lon>=0)[0][0]
         j = np.where(self.lats-lat>=0)[0][0]
-        z0 = self.z[j-1,i-1]
-        z1 = self.z[j,i-1]
-        z2 = self.z[j-1,i]
-        z3 = self.z[j,i]
+        if len(self.z.shape) == 2:
+            z0 = self.z[j-1,i-1]
+            z1 = self.z[j,i-1]
+            z2 = self.z[j-1,i]
+            z3 = self.z[j,i]
+        elif len(self.z.shape) == 3:
+            z0 = self.z[j-1,i-1,:]
+            z1 = self.z[j,i-1,:]
+            z2 = self.z[j-1,i,:]
+            z3 = self.z[j,i,:]
+        else:
+            raise ValueError()
         Dx = self.lons[i] - self.lons[i-1]
         Dy = self.lats[j] - self.lats[j-1]
         dx = lon - self.lons[i-1]
         dy = lat - self.lats[j-1]
-
         z = z0+(z1-z0)*dy/Dy+(z2-z0)*dx/Dx+(z0+z3-z1-z2)*dx*dy/Dx/Dy
         return z
-    def plot(self):
+    def plot(self,area=None):
+        '''area = [minlon,maxlon,minlat,maxlat]'''
+        if area is None:
+            minlon = self.lons[0]-(self.lons[-1]-self.lons[0])/20
+            maxlon = self.lons[-1]+(self.lons[-1]-self.lons[0])/20
+            minlat = self.lats[0]-(self.lats[-1]-self.lats[0])/20
+            maxlat = self.lats[-1]+(self.lats[-1]-self.lats[0])/20
+        else:
+            minlon,maxlon,minlat,maxlat = area
+        minlon,maxlon = minlon-360*(minlon>180),maxlon-360*(maxlon>180)
+        import cartopy.crs as ccrs
+        crsPlate = ccrs.PlateCarree()
+        crs = ccrs.PlateCarree()
+        fig = plt.figure()
+        ax = plt.axes(projection=crs)
+        ax.set_extent((minlon, maxlon, minlat, maxlat))
+        ax.coastlines()
         XX,YY = np.meshgrid(self.lons,self.lats)
-        plt.figure()
-        plt.pcolormesh(XX,YY,self.z)
+        im = ax.pcolormesh(XX,YY,self.z,cmap='rainbow')
+        gl = ax.gridlines(draw_labels=True)
+        gl.top_labels = False
+        gl.right_labels = False
+        # ax.set_xticks(np.arange(round(minlon),round(maxlon),(maxlon-minlon)//4), crs=ccrs.PlateCarree())
+        # ax.set_yticks(np.arange(round(minlat),round(maxlat),(maxlat-minlat)//4), crs=ccrs.PlateCarree())
+        fig.colorbar(im)
+        return im
+        # plt.figure()
+        # plt.pcolormesh(XX,YY,self.z)
         
 
 def gaussFun(A,mu,sig,t):

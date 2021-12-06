@@ -18,8 +18,9 @@ coastlineData = '/home/ayu/SubdInv/models/ne_10m_coastline/ne_10m_coastline'
 physioData = os.path.dirname(__file__)+'/physio/physio' #https://water.usgs.gov/GIS/dsdl/physio_shp.zip
 
 def plotLocalBase(minlon, maxlon, minlat, maxlat,resolution='c',coastline=None,figwidth=None,ax=None,
-             dlat=5.0, dlon=5.0, topo=None):
+             dlat=5.0, dlon=5.0, topo=None, projection='merc'):
     ''' Plot base map with country, state boundaries '''
+    minlon,maxlon = minlon-360*(minlon>180),maxlon-360*(maxlon>180)
     rsphere = (6378137.00,6356752.3142)
     lon_centre, lat_centre = (minlon+maxlon)/2, (minlat+maxlat)/2
     distEW = Geodesic.WGS84.Inverse(minlat, minlon, minlat, maxlon)['s12']
@@ -39,8 +40,17 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat,resolution='c',coastline=None,f
         print('Maybe something goes wrong in plotBase, please check!')
         fig = plt.figure()
 
-    m = Basemap(width=distEW, height=distNS, rsphere=rsphere, resolution=resolution, projection='lcc', 
-        lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre)
+    if projection == 'lcc':
+        m = Basemap(width=distEW, height=distNS, rsphere=rsphere, resolution=resolution, projection='lcc', 
+            lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre)
+    elif projection in ['merc','mill']:
+        m = Basemap(projection=projection, llcrnrlat=minlat, urcrnrlat=maxlat, 
+                    llcrnrlon=minlon, urcrnrlon=maxlon,
+                    lat_ts=(minlat+maxlat)/2,resolution=resolution)
+    else:
+        raise ValueError('Not supported yet.')
+    m.readshapefile('/home/ayu/Projects/Cascadia/Models/Plates/PB2002_boundaries',
+                'PB2002_boundaries',linewidth=2.0,color='orange')
     
     if topo is None:
         if coastline is not None:
@@ -78,13 +88,51 @@ def plotGlobalBase(figwidth=None,ax=None,resolution='l'):
     m.drawcoastlines(linewidth=1)
     return fig,m
 
-def plotLocalCart(minlon, maxlon, minlat, maxlat):
+def plotLocalCart(minlon, maxlon, minlat, maxlat, dlat=5.0, dlon=5.0, fig=None):
     crsPlate = ccrs.PlateCarree()
-    crs = ccrs.PlateCarree()
-    plt.figure()
+    # crs = ccrs.PlateCarree()
+    crs = ccrs.Mercator()
+    if fig is None:
+        plt.figure()
+    else:
+        plt.figure(fig.number)
     ax = plt.axes(projection=crs)
     ax.set_extent((minlon, maxlon, minlat, maxlat))
     ax.coastlines()
+
+    import matplotlib.ticker as mticker
+    gl = ax.gridlines(crs=crsPlate, draw_labels=True,linewidth=1, color='gray', 
+                      alpha=0.5, linestyle='--')
+    gl.xlocator = mticker.FixedLocator(np.arange(minlon-360*(minlon>180),maxlon-360*(maxlon>180),dlon))
+    gl.ylocator = mticker.FixedLocator(np.arange(minlat,maxlat,dlat))
+    gl.xlabels_top      = False
+    gl.xlabels_bottom   = True
+    gl.ylabels_left     = True
+    gl.ylabels_right    = False
+
+    import cartopy.feature as cfeature
+    states_provinces = cfeature.NaturalEarthFeature(
+            category='cultural',  name='admin_1_states_provinces_lines',
+            scale='50m', facecolor='none')
+    ax.add_feature(states_provinces, edgecolor='black', zorder=10) 
+
+    import cartopy.io.shapereader as shpreader
+    import cartopy.feature as cfeature
+    # Read shape file
+    reader = shpreader.Reader("/home/ayu/Projects/Cascadia/Models/Plates/PB2002_boundaries.shp")
+    # Filter for a specific country
+    plateBoundary = [plate.geometry for plate in reader.records()]
+    shape_feature = cfeature.ShapelyFeature(plateBoundary, crsPlate, facecolor=(1, 1, 1, 0), 
+                                            edgecolor='orange', lw=2)
+    ax.add_feature(shape_feature)
+
+
+    # ax.set_xticks([230-360,240-360], crs=crsPlate)
+    # ax.set_xticklabels([230-360,240-360], color='red', weight='bold')
+    # ax.set_yticks([40,45,50], crs=crsPlate)
+    # ax.set_yticklabels([40,45,50])
+    # ax.yaxis.tick_right()
+
     return ax,crsPlate
 
 def plotGlobalCart(type='Plate',**kwargs):
