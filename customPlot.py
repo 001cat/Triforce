@@ -18,7 +18,7 @@ coastlineData = '/home/ayu/SubdInv/models/ne_10m_coastline/ne_10m_coastline'
 physioData = os.path.dirname(__file__)+'/physio/physio' #https://water.usgs.gov/GIS/dsdl/physio_shp.zip
 
 def plotLocalBase(minlon, maxlon, minlat, maxlat,resolution='c',coastline=None,figwidth=None,ax=None,
-             dlat=5.0, dlon=5.0, topo=None, projection='merc'):
+             dlat=5.0, dlon=5.0, topo=None, projection='merc',plateBoundary=True):
     ''' Plot base map with country, state boundaries '''
     minlon,maxlon = minlon-360*(minlon>180),maxlon-360*(maxlon>180)
     rsphere = (6378137.00,6356752.3142)
@@ -49,8 +49,10 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat,resolution='c',coastline=None,f
                     lat_ts=(minlat+maxlat)/2,resolution=resolution)
     else:
         raise ValueError('Not supported yet.')
-    m.readshapefile('/home/ayu/Projects/Cascadia/Models/Plates/PB2002_boundaries',
-                'PB2002_boundaries',linewidth=2.0,color='orange')
+
+    if plateBoundary:
+        m.readshapefile('/home/ayu/Projects/Cascadia/Models/Plates/PB2002_boundaries',
+                    'PB2002_boundaries',linewidth=2.0,color='orange')
     
     if topo is None:
         if coastline is not None:
@@ -250,6 +252,24 @@ def moveAxes(ax,move):
 
 cvcpt = cpt2cmap(os.path.dirname(__file__)+'/cv_original.cpt','cv')[0]
 rbcpt = cpt2cmap(os.path.dirname(__file__)+'/rainbow.cpt','rainbow')[0].reversed()
+
+
+
+''' only for plot objects in package shapely '''
+
+
+def plot_coords(ax, ob, color=None):
+    x, y = ob.xy
+    ax.plot(x, y, 'o', color=color, zorder=1)
+
+def plot_line(ax, ob, color=None, zorder=1, linewidth=3, alpha=1):
+    x, y = ob.xy
+    ax.plot(x, y, color=color, linewidth=linewidth, solid_capstyle='round', zorder=zorder, alpha=alpha)
+
+
+
+
+
 
 
 if __name__ == '__main__':
