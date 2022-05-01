@@ -10,10 +10,6 @@ from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 labelFont = {'weight':'normal','size':14}
 titleFont = {'weight':'bold','size':16}
 
-# import os,pycpt;
-# cvcpt = pycpt.load.gmtColormap(os.path.dirname(__file__)+'/cv_original.cpt')
-# rbcpt = pycpt.load.gmtColormap(os.path.dirname(__file__)+'/rainbow.cpt').reversed()
-
 coastlineData = '/home/ayu/SubdInv/models/ne_10m_coastline/ne_10m_coastline'
 physioData = os.path.dirname(__file__)+'/physio/physio' #https://water.usgs.gov/GIS/dsdl/physio_shp.zip
 
@@ -178,8 +174,22 @@ def cpt2cmap(cptfile,name='NewColorMap',N=256):
                 cptmat.append([float(i) for i in line.split()])
     cptmat = np.array(cptmat)
     zLs = cptmat[:,4] - cptmat[:,0]
-    Ns = np.round(zLs/zLs.sum()*N)
-    Ns[-1] += N-Ns.sum()
+
+    # Ns = np.round(zLs/zLs.sum()*N)    # depracated, might result in negative Ns[-1]
+    # Ns[-1] += N-Ns.sum()
+    def calNs(zLs,N):
+        Ns = np.zeros(zLs.shape,dtype=int)
+        Z = zLs.sum(); Nseg = N-len(zLs)     # N nodes could only define N-1-(len(zLs)-1)=N-len(zLs) segments
+        NsegRemain = Nseg - len(zLs)
+        for i in range(len(Ns)):
+            Ns[i] = zLs[i]/Z*NsegRemain
+            Z -= zLs[i]; NsegRemain -= Ns[i]
+        Ns = Ns+2
+        return Ns
+    while N < 2*cptmat.shape[1]:
+        N *= 2
+    Ns = calNs(zLs,N)
+
     colorList = np.zeros((N,4))
     normX = np.zeros(len(zLs)+1)
     normY = np.zeros(len(zLs)+1)
