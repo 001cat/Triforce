@@ -9,12 +9,15 @@ from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 
 labelFont = {'weight':'normal','size':14}
 titleFont = {'weight':'bold','size':16}
+text_bbox = {'fc': '0.8', 'pad': 2}
 
 coastlineData = '/home/ayu/SubdInv/models/ne_10m_coastline/ne_10m_coastline'
 physioData = os.path.dirname(__file__)+'/physio/physio' #https://water.usgs.gov/GIS/dsdl/physio_shp.zip
 
-def plotLocalBase(minlon, maxlon, minlat, maxlat,resolution='c',coastline=None,figwidth=None,ax=None,
-             dlat=5.0, dlon=5.0, topo=None, projection='merc',plateBoundary=True):
+def plotLocalBase(minlon, maxlon, minlat, maxlat,dlat=5.0, dlon=5.0,lon0_tick=None,lat0_tick=None,
+                  figwidth=None,ax=None,projection='merc',resolution='c',
+                  coastline=None,topo=None,countries=True,states=True,
+                  drawPM=True,plateBoundary=True):
     ''' Plot base map with country, state boundaries '''
     minlon,maxlon = minlon-360*(minlon>180),maxlon-360*(maxlon>180)
     rsphere = (6378137.00,6356752.3142)
@@ -36,6 +39,9 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat,resolution='c',coastline=None,f
         print('Maybe something goes wrong in plotBase, please check!')
         fig = plt.figure()
 
+    ax.set_facecolor([0.9]*3)
+    [ax.spines[l].set_linewidth(0.25) for l in ['top','bottom','left','right']]
+
     if projection == 'lcc':
         m = Basemap(width=distEW, height=distNS, rsphere=rsphere, resolution=resolution, projection='lcc', 
             lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre)
@@ -45,29 +51,38 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat,resolution='c',coastline=None,f
                     lat_ts=(minlat+maxlat)/2,resolution=resolution)
     else:
         raise ValueError('Not supported yet.')
+    m.fillcontinents()
 
     if plateBoundary:
         m.readshapefile('/home/ayu/Projects/Cascadia/Models/Plates/PB2002_boundaries',
                     'PB2002_boundaries',linewidth=2.0,color='orange')
     
     if topo is None:
-        if coastline is not None:
+        if coastline == False:
+            pass
+        elif coastline is not None:
             m.readshapefile(coastline,'coastline',linewidth=0.5)
         else:
             m.drawcoastlines()
-        m.drawcountries(linewidth=1)
-        m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,0])
-        m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[0,0,0,1])
-        m.drawstates(color='k', linewidth=0.5,linestyle='solid')
-        m.readshapefile(physioData,'physio',linewidth=0.25)
-        return (fig,m)
+        if countries:
+            m.drawcountries(linewidth=1)
+        if states:
+            m.drawstates(color='k', linewidth=0.5,linestyle='solid')
+        # m.readshapefile(physioData,'physio',linewidth=0.25)
     elif topo is True:
         m.etopo(scale=1.0)
-        m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,0])
-        m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[0,0,0,1])
-        return (fig,m)
     else:
         raise ValueError('Plot with topo data has not been done yet!')
+
+    if drawPM:
+        lat0_tick = lat0_tick or minlat
+        lon0_tick = lon0_tick or minlon
+        PM = {}
+        PM.update(m.drawparallels(np.arange(lat0_tick,maxlat+dlat/2,dlat), labels=[1,0,0,0]))
+        PM.update(m.drawmeridians(np.arange(lon0_tick,maxlon+dlon/2,dlon), labels=[0,0,0,1]))
+        for v in PM.values():
+            v[0][0].set_alpha(0.2)
+    return (fig,m)
 
 def plotGlobalBase(figwidth=None,ax=None,resolution='l'):
     if ax is None:
@@ -171,7 +186,7 @@ def cpt2cmap(cptfile,name='NewColorMap',N=256):
             if (not line) or (line[0] in ('#','B','F','N')):
                 continue
             else:
-                cptmat.append([float(i) for i in line.split()])
+                cptmat.append([float(i) for i in line.replace('/',' ').split()])
     cptmat = np.array(cptmat)
     zLs = cptmat[:,4] - cptmat[:,0]
 
@@ -257,6 +272,26 @@ def moveAxes(ax,move):
         raise ValueError('Wrong move command, should start with U/D/R/L')
     ax.set_position([x,y,w,h])
 
+def moveSpine(ax,move):
+    bbox = ax.get_position()
+    x0,x1 = bbox.intervalx
+    y0,y1 = bbox.intervaly
+    if move[0] == 'R':
+        x1 += float(move[1:])
+    elif move[0] == 'L':
+        x0 += float(move[1:])
+    elif move[0] == 'U':
+        y1 += float(move[1:])
+    elif move[0] == 'D':
+        y0 += float(move[1:])
+    else:
+        raise ValueError('Wrong move command, should start with U/D/R/L')
+    ax.set_position([x0,y0,x1-x0,y1-y0])
+
+def doubleArrow(x1,y1,x2,y2,**kwargs):
+    plt.arrow(x1,y1,x2-x1,y2-y1,**kwargs)
+    plt.arrow(x2,y2,x1-x2,y1-y2,**kwargs)
+
 # fig, axes = plt.subplots(2,3,figsize=[12,8])
 # plt.subplots_adjust(wspace=0.25,hspace=0.3,left=0.08,right=0.92,bottom=0.08)
 
@@ -266,7 +301,6 @@ rbcpt = cpt2cmap(os.path.dirname(__file__)+'/rainbow.cpt','rainbow')[0].reversed
 
 
 ''' only for plot objects in package shapely '''
-
 
 def plot_coords(ax, ob, color=None):
     x, y = ob.xy
