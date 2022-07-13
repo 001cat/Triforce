@@ -1,4 +1,19 @@
 import numpy as np
+from scipy import integrate
+
+def logQuad(foo,xI,xF):
+    '''
+    integrate in range across lots of magnitude, like 10^(-10) to 10^(10)
+    '''
+    xI = max(1e-30,xI)
+    S = 0
+    xk = np.power(10,np.arange(np.ceil(np.log10(xI)),np.log10(xF),1))
+    xSeps = np.insert(np.insert(xk,-1,xF),0,xI)
+    for i in range(len(xSeps)-1):
+        x0,x1 = xSeps[i],xSeps[i+1]
+        # S += quadpy.quad(foo,x0,x1,epsabs=1e-8,epsrel=1e-5)[0]
+        S += integrate.quad(foo,x0,x1,epsabs=1e-8,epsrel=1e-5)[0]
+    return S
 
 def calCurv(x,y,t=None,N=100,debug=True):
     from scipy.interpolate import interp1d

@@ -39,7 +39,7 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat,dlat=5.0, dlon=5.0,lon0_tick=No
         print('Maybe something goes wrong in plotBase, please check!')
         fig = plt.figure()
 
-    ax.set_facecolor([0.9]*3)
+    ax = plt.gca() if ax is None else ax;ax.set_facecolor([0.9]*3)
     [ax.spines[l].set_linewidth(0.25) for l in ['top','bottom','left','right']]
 
     if projection == 'lcc':
@@ -98,7 +98,8 @@ def plotGlobalBase(figwidth=None,ax=None,resolution='l'):
         print('Maybe something goes wrong in plotBase, please check!')
         fig = plt.figure()
     m = Basemap(resolution='c')
-    m.drawcoastlines(linewidth=1)
+    # m.drawcoastlines(linewidth=1)
+    m.fillcontinents()
     return fig,m
 
 def plotLocalCart(minlon, maxlon, minlat, maxlat, dlat=5.0, dlon=5.0, fig=None):
@@ -244,15 +245,26 @@ def addAxes(loc,hasTitle=True):
     rect = [x+w*dx1, y+h*dy1, w*(1-dx1-dx2), h*(1-dy1-dy2)]
     return plt.axes(rect)
 
-def addCAxes(ax,location='right',size=0.05,pad=0.12):
-    bbox = ax.get_position()
-    x,y,w,h = bbox.x0,bbox.y0,bbox.width,bbox.height
+def addCAxes(ax,location='right',size=0.05,pad=0.05):
+    if type(ax) is list:
+        axes = ax
+        bounds = np.zeros((len(axes),4))
+        for i,ax in enumerate(axes):
+            bbox = ax.get_position()
+            bounds[i,:2] = bbox.intervalx
+            bounds[i,2:] = bbox.intervaly
+        x,y,w,h = bounds[:,0].min(),bounds[:,2].min(),\
+                  bounds[:,1].max()-bounds[:,0].min(),\
+                  bounds[:,3].max()-bounds[:,2].min()
+    else:
+        bbox = ax.get_position()
+        x,y,w,h = bbox.x0,bbox.y0,bbox.width,bbox.height
     if location == 'right':
         pad = 0.05 if pad is None else pad
         rect = [x+w+w*pad,y,w*size,h]
     elif location == 'bottom':
-        pad = 0.12 if pad is None else pad
-        rect = [x,y-w*pad-w*size,w,h*size]
+        pad = 0.05 if pad is None else pad
+        rect = [x,y-h*pad-h*size,w,h*size]
     else:
         raise ValueError('Not ready yet')
     return plt.axes(rect)
