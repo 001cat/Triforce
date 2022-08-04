@@ -8,11 +8,109 @@ def randString(N):
     ''' Return a random string '''
     return ''.join([random.choice(string.ascii_letters + string.digits) for i in range(N)])
 
+def savetxt(fname,*args):
+    N = len(args[0])
+    with open(fname,'w') as f:
+        for i in range(N):
+            s = ''
+            for arg in args:
+                s = s+f'{arg[i]} '
+            s = s[:-1]+'\n'
+            f.write(s)
+def savetxt2(fname,cols,fmt=None,header=False,header_fmt=None):
+    def rowNumCheck():
+        rowNums = [len(k) for k in cols.values()]
+        if len(set(rowNums)) != 1:
+            raise ValueError('Incompatible row lengths')
+        return rowNums[0]
+    def getFormats(fmt):
+        try:
+            iter(fmt)
+            return fmt
+        except:
+            fmt = '' if fmt is None else fmt
+            return [fmt]*len(cols)
+    N = rowNumCheck()
+    fmts = getFormats(fmt)
+    fmts_h = getFormats(header_fmt)
+    with open(fname,'w') as f:
+        if header:
+            s = ' '.join([f'{v:{fmt}}' for v,fmt in zip(cols.keys(),fmts_h)])+'\n'; f.write(s)
+        for i in range(N):
+            s = ' '.join([f'{v[i]:{fmt}}' for v,fmt in zip(cols.values(),fmts)])+'\n'; f.write(s)
+def str2digit(s):
+    if s in ['Nan','nan','None','none']:
+        raise ValueError('Not supported yet')
+    if s.isdigit():
+        return int(s)
+    try:
+        float(s)
+        return float(s)
+    except ValueError:
+        pass
+    return s
+def loadtxt(fname):
+    data = [];init=False
+    with open(fname,'r') as f:
+        for line in f.readlines():
+            l = line.split()
+            if init is False:
+                data = [ [str2digit(s)] for s in l ]
+                init = True
+                continue
+            for s,col in zip(l,data):
+                col.append(str2digit(s))
+    data = [col if type(col[0]) is str else np.array(col) for col in data]
+    return data
+def loadtxt2(fname,header=False,ndarray=False):
+    data = {}
+    with open(fname,'r') as f:
+        try:
+            for h in header:
+                data[h] = []
+            header = False
+        except:
+            pass
+        for line in f.readlines():
+            l = line.split()
+            if header is True:
+                for s in l:
+                    data[s] = []
+                header = False
+                continue
+            if data == {}:
+                for i in range(len(l)):
+                    data[f'col_{i}'] = []
+            for v,s in zip(data.values(),l):
+                v.append(str2digit(s))
+    if ndarray:
+        for k,v in data.items():
+            data[k] = np.array(v)
+    return data
+def get_current_memory() -> float: 
+    ''' get memory usage of current process '''
+    import os,psutil
+    pid = os.getpid()
+    p = psutil.Process(pid)
+    info = p.memory_full_info()
+    # psutil.virtual_memory().percent
+    # psutil.virtual_memory().available
+    # psutil.swap_memory().percent
+    return info.uss / 1024. / 1024.
+
+# gaussFun and gaussFit have been moved to math.py
+
 
 class GeoGrid():
+    R = 6371.0
     def __init__(self,lons=[],lats=[]):
         self.lons = np.array(lons)
         self.lats = np.array(lats)
+        if np.any(self.lons > 180):
+            self._lon_type = '0 to 360'
+        else:
+            self._lon_type = '-180 to 180'
+
     @property
     def dlon(self):
         return self.lons[1] - self.lons[0]
@@ -25,15 +123,104 @@ class GeoGrid():
     @property
     def YY(self):
         return np.meshgrid(self.lons,self.lats)[1]
+    @property
+    def deltaXXkm(self):
+        return np.radians(self.dlon)*np.cos(np.radians(self.YY))*self.R
+    @property
+    def deltaYYkm(self):
+        return np.radians(self.dlat)*np.ones(self.YY.shape)*self.R
+
+    def interpCMD(self,latIn,lonIn,zIn,tension=0.0):
+        import netCDF4 as nc4
+        ''' run GMT surface command to interpolate/exterpolate scatter points to whole surface
+        see Smith and Wessel, 1990. '''
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            np.savetxt(f'{tmpdirname}/fieldIn.tmp', list(zip(lonIn,latIn,zIn)), fmt='%g')
+            R = f'{self.lons.min()}/{self.lons.max()}/{self.lats.min()}/{self.lats.max()}'
+            os.system(f'cd {tmpdirname} && gmt gmtset MAP_FRAME_TYPE fancy && gmt surface fieldIn.tmp -T{tension} -GfieldOut.grd -I{self.dlon}/{self.dlat} -R{R}')
+            try:
+                with nc4.Dataset(f'{tmpdirname}/fieldOut.grd','r') as f:
+                    zOut = f.variables['z'][()]
+            except:
+                zOut = None
+        return zOut
+
+    def interp(self,latIn,lonIn,zIn,tension=0.0):
+        from pygmt.clib import Session
+        import netCDF4 as nc4
+        ''' similar to interpS, but avoid possible deadlock'''
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpfileIn = f'{tmpdirname}/fieldIn.tmp'
+            tmpfileOut = f'{tmpdirname}/fieldOut.tmp'
+            R = f'{self.lons.min()}/{self.lons.max()}/{self.lats.min()}/{self.lats.max()}'
+            lib = Session()
+            libgmt = ctypes.CDLL('libgmt.so')
+            function = getattr(libgmt, 'GMT_Create_Session')
+            function.argtypes = [ctypes.c_char_p, ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p]
+            function.restype  = ctypes.c_void_p
+            # session = function('pygmt-session'.encode(), 2, 2, ctypes.POINTER(ctypes.c_int)())
+            session = function('pygmt-session'.encode(), 2, 2, print_func_pygmt)
+            lib.session_pointer = session
+            np.savetxt(tmpfileIn, list(zip(lonIn,latIn,zIn)), fmt='%g')
+            arg_str = f'{tmpfileIn} -G{tmpfileOut} -I{self.dlon}/{self.dlat} -R{R} -T{tension}'
+            try:
+                lib.call_module(module="surface", args=arg_str)
+            except:
+                pass
+            # except:
+            #     print(f'Error in surface: {arg_str}')
+            lib.__exit__(None,None,None)
+
+            try:
+                with nc4.Dataset(tmpfileOut,'r') as f:
+                    zOut = f.variables['z'][()]
+            except:
+                zOut = None
+        return zOut
+
+    def gradient(self,zIn):
+        zGradx,zGrady = np.zeros(self.XX.shape),np.zeros(self.YY.shape)
+        deltaLon,deltaLat = self.deltaXXkm,self.deltaYYkm
+        zGradx[:,1:-1] = (zIn[:,2:] - zIn[:,:-2])/(2*deltaLon[:,1:-1])
+        zGrady[1:-1,:] = (zIn[2:,:] - zIn[:-2,:])/(2*deltaLat[1:-1,:])
+        zGradx[:,0] = (zIn[:,1]-zIn[:,0])/deltaLon[:,0]
+        zGradx[:,-1] = (zIn[:,-1]-zIn[:,-2])/deltaLon[:,-1]
+        zGrady[0,:] = (zIn[1,:]-zIn[0,:])/deltaLat[0,:]
+        zGrady[-1,:] = (zIn[-1,:]-zIn[-2,:])/deltaLat[-1,:]
+        return zGradx,zGrady
+
+    def laplacian(self,zIn):
+        TB = 1.0        # boundary tension, see Smith and Wessel, 1990.
+        n,m = zIn.shape
+        deltaLon,deltaLat = self.deltaXXkm,self.deltaYYkm
+        alpha = deltaLat/deltaLon
+        z = np.zeros((n+2,m+2))
+        z[1:-1,1:-1] = zIn
+        z[1:-1,0]    = (2*(1-TB)*z[1:-1,1]-(1-TB/2)*z[1:-1,2])/(1-3/2*TB)   # extension of left,right,upper,lower boundary
+        z[1:-1,-1]   = (2*(1-TB)*z[1:-1,-2]-(1-TB/2)*z[1:-1,-3])/(1-3/2*TB)
+        z[0,1:-1]    = (2*(1-TB)*z[1,1:-1]-(1-TB/2)*z[2,1:-1])/(1-3/2*TB)
+        z[-1,1:-1]   = (2*(1-TB)*z[-2,1:-1]-(1-TB/2)*z[-3,1:-1])/(1-3/2*TB)
+        z[0,0]       = z[0,1]+z[1,0]-z[1,1]
+        z[-1,0]      = z[-1,1]+z[-2,0]-z[-2,1]
+        z[0,-1]      = z[0,-2]+z[1,-1]-z[1,-2]
+        z[-1,-1]     = z[-2,-1]+z[-1,-2]-z[-2,-2]
+        zLapla = (z[1:-1,2:]+z[1:-1,:-2]+(alpha**2)*(z[2:,1:-1]+z[:-2,1:-1])-2*(1+alpha**2)*z[1:-1,1:-1])/deltaLon/deltaLon
+        return zLapla
+    
+    
     def _findInd(self,lon,lat):
         j = np.where(abs(self.lons-lon)<=self.dlon/4)[0][0]
         i = np.where(abs(self.lats-lat)<=self.dlat/4)[0][0]
         return i,j
 
-
-
+@ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_char_p)
+def print_func_pygmt(file_pointer, message):
+    message = message.decode().strip()
+    print(message, file=sys.stderr, flush=True)
+    return 0
 class GeoMap(GeoGrid):
     # if the map is a global one, you'd better set lons like: -180,...,180
+    R = 6371.0
     def __init__(self,lons=[],lats=[],z=[],mask=False):
         self.lons = np.array(lons)
         self.lats = np.array(lats)
@@ -43,6 +230,15 @@ class GeoMap(GeoGrid):
         else:
             self.type = '0 to 360'
         self.mask=mask
+    def interpCMD(self, latIn, lonIn, zIn, tension=0):
+        self.z = super().interpCMD(latIn, lonIn, zIn, tension)
+    def interp(self, latIn, lonIn, zIn, tension=0):
+        self.z = super().interp(latIn, lonIn, zIn, tension)
+    def gradient(self):
+        return super().gradient(self.z)
+    def laplacian(self):
+        return super().laplacian(self.z)
+
     def value(self,lon,lat):
         if (lon < 0) and self.type == '0 to 360':
             lon = lon + 360
@@ -131,11 +327,7 @@ class GeoMap(GeoGrid):
         lons,lats,z,mask = tmp['lons'],tmp['lats'],tmp['z'],tmp['mask']
         self.__init__(lons,lats,z,mask)
 
-@ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_char_p)
-def print_func_pygmt(file_pointer, message):
-    message = message.decode().strip()
-    print(message, file=sys.stderr, flush=True)
-    return 0
+''' deprecated '''
 class GeoSphere(GeoGrid):
     def __init__(self, lons=[], lats=[]):
         super().__init__(lons, lats)
@@ -222,110 +414,6 @@ class GeoSphere(GeoGrid):
         z[-1,-1]     = z[-2,-1]+z[-1,-2]-z[-2,-2]
         zLapla = (z[1:-1,2:]+z[1:-1,:-2]+(alpha**2)*(z[2:,1:-1]+z[:-2,1:-1])-2*(1+alpha**2)*z[1:-1,1:-1])/deltaLon/deltaLon
         return zLapla
-    
-
-
-def gaussFun(A,mu,sig,t):
-    return A*np.exp(-((t-mu)**2)/(2*sig*sig))
-def gaussFit(t,f,start=[1,0,1]):
-    '''Get best gaussian function fit. A,mu,sig = gaussFit(t,f)'''
-    from scipy.optimize import leastsq
-    def errorFun(pars,t,f):
-        A,mu,sig = pars
-        return gaussFun(A,mu,sig,t) - f
-    A,mu,sig = leastsq(errorFun,start,args=(t,f))[0]
-    return A,mu,abs(sig)
-
-def savetxt(fname,*args):
-    N = len(args[0])
-    with open(fname,'w') as f:
-        for i in range(N):
-            s = ''
-            for arg in args:
-                s = s+f'{arg[i]} '
-            s = s[:-1]+'\n'
-            f.write(s)
-def savetxt2(fname,cols,fmt=None,header=False,header_fmt=None):
-    def rowNumCheck():
-        rowNums = [len(k) for k in cols.values()]
-        if len(set(rowNums)) != 1:
-            raise ValueError('Incompatible row lengths')
-        return rowNums[0]
-    def getFormats(fmt):
-        try:
-            iter(fmt)
-            return fmt
-        except:
-            fmt = '' if fmt is None else fmt
-            return [fmt]*len(cols)
-    N = rowNumCheck()
-    fmts = getFormats(fmt)
-    fmts_h = getFormats(header_fmt)
-    with open(fname,'w') as f:
-        if header:
-            s = ' '.join([f'{v:{fmt}}' for v,fmt in zip(cols.keys(),fmts_h)])+'\n'; f.write(s)
-        for i in range(N):
-            s = ' '.join([f'{v[i]:{fmt}}' for v,fmt in zip(cols.values(),fmts)])+'\n'; f.write(s)
-def str2digit(s):
-    if s in ['Nan','nan','None','none']:
-        raise ValueError('Not supported yet')
-    if s.isdigit():
-        return int(s)
-    try:
-        float(s)
-        return float(s)
-    except ValueError:
-        pass
-    return s
-def loadtxt(fname):
-    data = [];init=False
-    with open(fname,'r') as f:
-        for line in f.readlines():
-            l = line.split()
-            if init is False:
-                data = [ [str2digit(s)] for s in l ]
-                init = True
-                continue
-            for s,col in zip(l,data):
-                col.append(str2digit(s))
-    data = [col if type(col[0]) is str else np.array(col) for col in data]
-    return data
-def loadtxt2(fname,header=False,ndarray=False):
-    data = {}
-    with open(fname,'r') as f:
-        try:
-            for h in header:
-                data[h] = []
-            header = False
-        except:
-            pass
-        for line in f.readlines():
-            l = line.split()
-            if header is True:
-                for s in l:
-                    data[s] = []
-                header = False
-                continue
-            if data == {}:
-                for i in range(len(l)):
-                    data[f'col_{i}'] = []
-            for v,s in zip(data.values(),l):
-                v.append(str2digit(s))
-    if ndarray:
-        for k,v in data.items():
-            data[k] = np.array(v)
-    return data
-
-def get_current_memory() -> float: 
-    ''' get memory usage of current process '''
-    import os,psutil
-    pid = os.getpid()
-    p = psutil.Process(pid)
-    info = p.memory_full_info()
-    # psutil.virtual_memory().percent
-    # psutil.virtual_memory().available
-    # psutil.swap_memory().percent
-    return info.uss / 1024. / 1024.
 
 
 if __name__ == "__main__":

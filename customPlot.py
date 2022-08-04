@@ -11,36 +11,39 @@ labelFont = {'weight':'normal','size':14}
 titleFont = {'weight':'bold','size':16}
 text_bbox = {'fc': '0.8', 'pad': 2}
 
+
 coastlineData = '/home/ayu/SubdInv/models/ne_10m_coastline/ne_10m_coastline'
 physioData = os.path.dirname(__file__)+'/physio/physio' #https://water.usgs.gov/GIS/dsdl/physio_shp.zip
 
-def plotLocalBase(minlon, maxlon, minlat, maxlat,dlat=5.0, dlon=5.0,lon0_tick=None,lat0_tick=None,
-                  figwidth=None,ax=None,projection='merc',resolution='c',
-                  coastline=None,topo=None,countries=True,states=True,
-                  drawPM=True,plateBoundary=True):
+''' Geographic Maps '''
+
+def plotLocalBase(minlon, maxlon, minlat, maxlat, projection='merc', resolution='c',
+                  ax=None, topo=False, coastline=False, countries=True, states=True, plateBoundary=True,
+                  gridlines = {
+                    'dlat':5.0,'lat0':None,'latLocation':[1,0,0,0],
+                    'dlon':5.0,'lon0':None,'lonLocation':[0,0,0,1]
+                    }):
     ''' Plot base map with country, state boundaries '''
     minlon,maxlon = minlon-360*(minlon>180),maxlon-360*(maxlon>180)
     rsphere = (6378137.00,6356752.3142)
     lon_centre, lat_centre = (minlon+maxlon)/2, (minlat+maxlat)/2
     distEW = Geodesic.WGS84.Inverse(minlat, minlon, minlat, maxlon)['s12']
     distNS = Geodesic.WGS84.Inverse(minlat, minlon, maxlat, minlon)['s12']
-    
+
+
+    gridlines_tmp = gridlines
+    gridlines = {
+        'dlat':5.0,'lat0':None,'latLocation':[1,0,0,0],
+        'dlon':5.0,'lon0':None,'lonLocation':[0,0,0,1]
+    }
+    gridlines.update(gridlines_tmp)
+
     if ax is None:
-        figwidth = 6.0 if figwidth is None else figwidth
-    else:
-        figwidth = None
-
-    if figwidth is not None:
+        figwidth = 6.0
         fig = plt.figure(figsize=[figwidth,figwidth/distEW*distNS])
-    elif ax is not None:
-        plt.sca(ax)
-        fig = plt.gcf()
+        ax = plt.gca()
     else:
-        print('Maybe something goes wrong in plotBase, please check!')
-        fig = plt.figure()
-
-    ax = plt.gca() if ax is None else ax;ax.set_facecolor([0.9]*3)
-    [ax.spines[l].set_linewidth(0.25) for l in ['top','bottom','left','right']]
+        plt.sca(ax); fig = plt.gcf()
 
     if projection == 'lcc':
         m = Basemap(width=distEW, height=distNS, rsphere=rsphere, resolution=resolution, projection='lcc', 
@@ -51,35 +54,40 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat,dlat=5.0, dlon=5.0,lon0_tick=No
                     lat_ts=(minlat+maxlat)/2,resolution=resolution)
     else:
         raise ValueError('Not supported yet.')
+
+    ax.set_facecolor([0.9]*3)
+    [ax.spines[l].set_linewidth(0.25) for l in ['top','bottom','left','right']]
     m.fillcontinents()
 
     if plateBoundary:
         m.readshapefile('/home/ayu/Projects/Cascadia/Models/Plates/PB2002_boundaries',
                     'PB2002_boundaries',linewidth=2.0,color='orange')
-    
-    if topo is None:
-        if coastline == False:
-            pass
-        elif coastline is not None:
-            m.readshapefile(coastline,'coastline',linewidth=0.5)
-        else:
-            m.drawcoastlines()
-        if countries:
-            m.drawcountries(linewidth=1)
-        if states:
-            m.drawstates(color='k', linewidth=0.5,linestyle='solid')
-        # m.readshapefile(physioData,'physio',linewidth=0.25)
-    elif topo is True:
-        m.etopo(scale=1.0)
-    else:
-        raise ValueError('Plot with topo data has not been done yet!')
 
-    if drawPM:
-        lat0_tick = lat0_tick or minlat
-        lon0_tick = lon0_tick or minlon
+    if topo is True:
+        m.etopo(scale=1.0)
+
+    if coastline == False:
+        pass
+    elif coastline == True:
+        m.drawcoastlines()
+    elif coastline == 'accurate':
+        m.readshapefile(coastline,'coastline',linewidth=0.5)
+    else:
+        raise ValueError('Customized coastline data has not been supported yet!')
+
+    if countries:
+        m.drawcountries(linewidth=1)
+
+    if states:
+        m.drawstates(color='k', linewidth=0.5,linestyle='solid')
+    
+    if gridlines:
+        lat0_tick = gridlines['lat0'] or minlat
+        lon0_tick = gridlines['lon0'] or minlon
+        dlat,dlon = gridlines['dlat'],gridlines['dlon']
         PM = {}
-        PM.update(m.drawparallels(np.arange(lat0_tick,maxlat+dlat/2,dlat), labels=[1,0,0,0]))
-        PM.update(m.drawmeridians(np.arange(lon0_tick,maxlon+dlon/2,dlon), labels=[0,0,0,1]))
+        PM.update(m.drawparallels(np.arange(lat0_tick,maxlat+dlat/2,dlat),labels=gridlines['latLocation']))
+        PM.update(m.drawmeridians(np.arange(lon0_tick,maxlon+dlon/2,dlon),labels=gridlines['lonLocation']))
         for v in PM.values():
             v[0][0].set_alpha(0.2)
     return (fig,m)
@@ -163,77 +171,9 @@ def plotGlobalCart(type='Plate',**kwargs):
     ax.coastlines()
     return ax,crsPlate
 
-def colorCycle():
-    fig = plt.figure()
-    ax = fig.add_subplot()
-    cycle = ax._get_lines.prop_cycler
-    cl = [next(cycle) for _ in range(10)]
-    cl = [c['color'] for c in cl]
-    plt.close()
-    return cl
 
-def cpt2cmap(cptfile,name='NewColorMap',N=256):
-    def interpColorList(listedCmap,N):
-        R = np.linspace(listedCmap[0][0],listedCmap[1][0],N)
-        G = np.linspace(listedCmap[0][1],listedCmap[1][1],N)
-        B = np.linspace(listedCmap[0][2],listedCmap[1][2],N)
-        A = np.linspace(listedCmap[0][3],listedCmap[1][3],N)
-        return np.array([R,G,B,A]).T
 
-    cptmat = []
-    with open(cptfile) as f:
-        for line in f:
-            line = line.strip()
-            if (not line) or (line[0] in ('#','B','F','N')):
-                continue
-            else:
-                cptmat.append([float(i) for i in line.replace('/',' ').split()])
-    cptmat = np.array(cptmat)
-    zLs = cptmat[:,4] - cptmat[:,0]
-
-    # Ns = np.round(zLs/zLs.sum()*N)    # depracated, might result in negative Ns[-1]
-    # Ns[-1] += N-Ns.sum()
-    def calNs(zLs,N):
-        Ns = np.zeros(zLs.shape,dtype=int)
-        Z = zLs.sum(); Nseg = N-len(zLs)     # N nodes could only define N-1-(len(zLs)-1)=N-len(zLs) segments
-        NsegRemain = Nseg - len(zLs)
-        for i in range(len(Ns)):
-            Ns[i] = zLs[i]/Z*NsegRemain
-            Z -= zLs[i]; NsegRemain -= Ns[i]
-        Ns = Ns+2
-        return Ns
-    while N < 2*cptmat.shape[1]:
-        N *= 2
-    Ns = calNs(zLs,N)
-
-    colorList = np.zeros((N,4))
-    normX = np.zeros(len(zLs)+1)
-    normY = np.zeros(len(zLs)+1)
-    count = 0
-    for i in range(len(zLs)):
-        colorList[count:count+int(Ns[i])] = interpColorList(
-                                    [[cptmat[i,1]/255,cptmat[i,2]/255,cptmat[i,3]/255,1],
-                                     [cptmat[i,5]/255,cptmat[i,6]/255,cptmat[i,7]/255,1]],
-                                    N=int(Ns[i]))
-        normX[i] = cptmat[i,0]
-        normY[i] = Ns[:i].sum()/N
-        count += int(Ns[i])
-    normX[-1] = cptmat[-1,4]
-    normY[-1] = 1
-    cmap = ListedColormap(colorList)
-    norm = CustomNorm(normX,normY)
-    return cmap,norm
-
-class CustomNorm(mpl.colors.Normalize):
-    def __init__(self,x,y,clip=False):
-        super().__init__(x[0],x[-1],clip)
-        self.x,self.y = x,y
-    def __call__(self,value,clip=None):
-        if type(value) == np.ma.masked_array:
-            return np.ma.masked_array(np.interp(value,self.x,self.y),mask=value.mask)
-        else:
-            return np.ma.masked_array(np.interp(value,self.x,self.y))
-
+''' Axis modifications'''
 def addAxes(loc,hasTitle=True):
     ''' loc = [x,y,w,h] '''
     if hasTitle:
@@ -300,20 +240,126 @@ def moveSpine(ax,move):
         raise ValueError('Wrong move command, should start with U/D/R/L')
     ax.set_position([x0,y0,x1-x0,y1-y0])
 
+
+
+''' colormap, cpt, norm '''
+class CustomNorm(mpl.colors.Normalize):
+    '''Please add cax.set_xscale('linear') to get a normal colorbar'''
+    def __init__(self,x,y,clip=False):
+        super().__init__(x[0],x[-1],clip)
+        self.x,self.y = x,y
+    def __call__(self,value,clip=None):
+        if type(value) == np.ma.masked_array:
+            return np.ma.masked_array(np.interp(value,self.x,self.y),mask=value.mask)
+        else:
+            return np.ma.masked_array(np.interp(value,self.x,self.y))
+    def inverse(self,value):
+        if np.iterable(value):
+            if type(value) == np.ma.masked_array:
+                return np.ma.masked_array(np.interp(value,self.y,self.x),mask=value.mask)
+        return np.interp(value,self.y,self.x)
+
+def cpt2cmap(cptfile,name='NewColorMap',N=256):
+    def interpColorList(listedCmap,N):
+        R = np.linspace(listedCmap[0][0],listedCmap[1][0],N)
+        G = np.linspace(listedCmap[0][1],listedCmap[1][1],N)
+        B = np.linspace(listedCmap[0][2],listedCmap[1][2],N)
+        A = np.linspace(listedCmap[0][3],listedCmap[1][3],N)
+        return np.array([R,G,B,A]).T
+
+    cptmat = []
+    with open(cptfile) as f:
+        for line in f:
+            line = line.strip()
+            if (not line) or (line[0] in ('#','B','F','N')):
+                continue
+            else:
+                cptmat.append([float(i) for i in line.replace('/',' ').split()])
+    cptmat = np.array(cptmat)
+    zLs = cptmat[:,4] - cptmat[:,0]
+
+    # Ns = np.round(zLs/zLs.sum()*N)    # depracated, might result in negative Ns[-1]
+    # Ns[-1] += N-Ns.sum()
+    def calNs(zLs,N):
+        Ns = np.zeros(zLs.shape,dtype=int)
+        Z = zLs.sum(); Nseg = N-len(zLs)     # N nodes could only define N-1-(len(zLs)-1)=N-len(zLs) segments
+        NsegRemain = Nseg - len(zLs)
+        for i in range(len(Ns)):
+            Ns[i] = zLs[i]/Z*NsegRemain
+            Z -= zLs[i]; NsegRemain -= Ns[i]
+        Ns = Ns+2
+        return Ns
+    while N < 2*cptmat.shape[1]:
+        N *= 2
+    Ns = calNs(zLs,N)
+
+    colorList = np.zeros((N,4))
+    normX = np.zeros(len(zLs)+1)
+    normY = np.zeros(len(zLs)+1)
+    count = 0
+    for i in range(len(zLs)):
+        colorList[count:count+int(Ns[i])] = interpColorList(
+                                    [[cptmat[i,1]/255,cptmat[i,2]/255,cptmat[i,3]/255,1],
+                                     [cptmat[i,5]/255,cptmat[i,6]/255,cptmat[i,7]/255,1]],
+                                    N=int(Ns[i]))
+        normX[i] = cptmat[i,0]
+        normY[i] = Ns[:i].sum()/N
+        count += int(Ns[i])
+    normX[-1] = cptmat[-1,4]
+    normY[-1] = 1
+    cmap = ListedColormap(colorList)
+    norm = CustomNorm(normX,normY)
+    return cmap,norm
+
+cvcpt = cpt2cmap(os.path.dirname(__file__)+'/cv_original.cpt','cv')[0]
+rbcpt = cpt2cmap(os.path.dirname(__file__)+'/rainbow.cpt','rainbow')[0].reversed()
+
+def buildBoundaryNorm(sep,N=256,n=None):
+    n = N//(len(sep)-1) if n is None else n
+    mpl.colors.BoundaryNorm
+
+    boundaries = np.zeros(1+n*(len(sep)-1))
+    boundaries[0] = sep[0]
+    for i in range(len(sep)-1):
+        boundaries[(i*n)+1:(i+1)*n+1] = np.linspace(sep[i],sep[i+1],n+1)[1:]
+    return mpl.colors.BoundaryNorm(boundaries,N)
+
+def cmapZoom(cmap,zOld=[0,0.45,0.55,1],zNew=[0,0.25,0.75,1],N=1024):
+    from matplotlib import cm
+    from matplotlib.colors import ListedColormap
+    samples = []
+    for i in range(len(zOld)-1):
+        samples += list(np.linspace(zOld[i],zOld[i+1],int(round((zNew[i+1]-zNew[i])*N))))
+    cmap = cm.get_cmap(cmap,N*2) if type(cmap) is str else cmap
+    return ListedColormap(cmap(samples))
+
+
+
+
+''' miscellaneous '''
+def colorCycle():
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    cycle = ax._get_lines.prop_cycler
+    cl = [next(cycle) for _ in range(10)]
+    cl = [c['color'] for c in cl]
+    plt.close()
+    return cl
+
 def doubleArrow(x1,y1,x2,y2,**kwargs):
     plt.arrow(x1,y1,x2-x1,y2-y1,**kwargs)
     plt.arrow(x2,y2,x1-x2,y1-y2,**kwargs)
 
 # fig, axes = plt.subplots(2,3,figsize=[12,8])
 # plt.subplots_adjust(wspace=0.25,hspace=0.3,left=0.08,right=0.92,bottom=0.08)
+# text.set_path_effects([
+#     path_effects.Stroke(linewidth=3,foreground='black'),
+#     path_effects.Normal()
+# ])
 
-cvcpt = cpt2cmap(os.path.dirname(__file__)+'/cv_original.cpt','cv')[0]
-rbcpt = cpt2cmap(os.path.dirname(__file__)+'/rainbow.cpt','rainbow')[0].reversed()
 
 
-
-''' only for plot objects in package shapely '''
-
+''' for plot objects in package shapely '''
 def plot_coords(ax, ob, color=None):
     x, y = ob.xy
     ax.plot(x, y, 'o', color=color, zorder=1)

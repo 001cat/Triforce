@@ -2,7 +2,7 @@ import obspy,os
 import numpy as np
 import matplotlib.pyplot as plt
 from Triforce.fftOperation import Y2F,F2Y
-from Triforce.utils import get_current_memory
+from Triforce.utils import get_current_memory,randString
 
 def midnightBefore(t):
     return obspy.UTCDateTime(t.year,t.month,t.day)
@@ -16,11 +16,6 @@ def genDateTimeWins(starttime,endtime,winL=86400):
         winLst.append((t0,t0+winL))
         t0 += winL
     return winLst
-
-def randString(N):
-    import random,string
-    ''' Return a random string '''
-    return ''.join([random.choice(string.ascii_letters + string.digits) for i in range(N)])
 
 def seismicPreProc(stIn,inv,starttime=None,endtime=None,freqmin=0.01,freqmax=None, 
                    reSampleDelta=False,merge=True,rmResp=True,zerophase=True,**kwargs):

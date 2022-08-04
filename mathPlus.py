@@ -1,6 +1,35 @@
 import numpy as np
 from scipy import integrate
 
+def gaussFun(A,mu,sig,t):
+    return A*np.exp(-((t-mu)**2)/(2*sig*sig))
+def gaussFit(t,f,start=[1,0,1]):
+    '''Get best gaussian function fit. A,mu,sig = gaussFit(t,f)'''
+    from scipy.optimize import leastsq
+    def errorFun(pars,t,f):
+        A,mu,sig = pars
+        return gaussFun(A,mu,sig,t) - f
+    A,mu,sig = leastsq(errorFun,start,args=(t,f))[0]
+    return A,mu,abs(sig)
+
+def group_into_bins(binEdges,x,y):
+    if binEdges.ndim == 1:
+        binEdgesL,binEdgesH = binEdges[:-1],binEdges[1:]
+    else:
+        binEdgesL,binEdgesH = binEdges[0],binEdges[1]
+    binCenter = np.zeros(len(binEdgesL))
+    binAvg    = np.zeros(len(binEdgesL))*np.nan
+    binStd    = np.zeros(len(binEdgesL))*np.nan
+    for i in range(len(binEdgesL)):
+        I = (x<=binEdgesH[i]) * (x>=binEdgesL[i])
+        binCenter[i] = (binEdgesH[i]+binEdgesL[i])/2
+        if I.sum() == 0:
+            continue
+        binAvg[i]    = y[I].mean()
+        binStd[i]    = y[I].std()
+    return binCenter,binAvg,binStd
+
+
 def logQuad(foo,xI,xF):
     '''
     integrate in range across lots of magnitude, like 10^(-10) to 10^(10)
