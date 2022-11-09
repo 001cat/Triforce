@@ -1,6 +1,8 @@
 import numpy as np
 from scipy import integrate
 
+def gaussDis(mu,sig,t):
+    return gaussFun(1/np.sqrt(2*np.pi*sig**2),mu,sig,t)
 def gaussFun(A,mu,sig,t):
     return A*np.exp(-((t-mu)**2)/(2*sig*sig))
 def gaussFit(t,f,start=[1,0,1]):
@@ -12,7 +14,7 @@ def gaussFit(t,f,start=[1,0,1]):
     A,mu,sig = leastsq(errorFun,start,args=(t,f))[0]
     return A,mu,abs(sig)
 
-def group_into_bins(binEdges,x,y):
+def group_into_bins(binEdges,x,y,percentile=None):
     if binEdges.ndim == 1:
         binEdgesL,binEdgesH = binEdges[:-1],binEdges[1:]
     else:
@@ -21,12 +23,14 @@ def group_into_bins(binEdges,x,y):
     binAvg    = np.zeros(len(binEdgesL))*np.nan
     binStd    = np.zeros(len(binEdgesL))*np.nan
     for i in range(len(binEdgesL)):
-        I = (x<=binEdgesH[i]) * (x>=binEdgesL[i])
+        Y = y[(x<=binEdgesH[i]) * (x>=binEdgesL[i])]
+        if percentile is not None:
+            Y = Y[(Y>np.percentile(Y,percentile[0])) * (Y<np.percentile(Y,percentile[1]))]
         binCenter[i] = (binEdgesH[i]+binEdgesL[i])/2
-        if I.sum() == 0:
+        if Y.size == 0:
             continue
-        binAvg[i]    = y[I].mean()
-        binStd[i]    = y[I].std()
+        binAvg[i]    = Y.mean()
+        binStd[i]    = Y.std()
     return binCenter,binAvg,binStd
 
 
@@ -60,3 +64,33 @@ def calCurv(x,y,t=None,N=100,debug=True):
     if debug is True:
         print('To be finised!')
     return curv
+
+def weighted_std(values, weights):
+    """
+    Return the weighted average and standard deviation.
+
+    values, weights -- Numpy ndarrays with the same shape.
+    """
+    weights = weights[~np.isnan(values)]
+    values  = values[~np.isnan(values)]
+    if len(weights) == 0:
+        return -1
+
+    #####
+    # values_Main = values[np.argmax(weights)]
+    # I = abs(values - values_Main) < max(values_Main,2)
+    # weights = weights[I]
+    # values  = values[I]
+    # if len(weights) == 0:
+    #     return -1
+    #####
+
+    average = np.average(values, weights=weights)
+    # Fast and numerically precise:
+    variance = np.average((values-average)**2, weights=weights)
+    return np.sqrt(variance)
+
+
+
+
+

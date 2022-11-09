@@ -2,6 +2,7 @@ import tempfile,ctypes,os,sys
 import numpy as np
 import matplotlib.pyplot as plt
 from netCDF4 import Dataset
+from geographiclib.geodesic import Geodesic
 
 def randString(N):
     import random,string
@@ -178,6 +179,38 @@ class GeoGrid():
                 zOut = None
         return zOut
 
+    def _interp_mask_(self,latIn,lonIn,dlatCheck=None,dlonCheck=None):
+        dlonCheck = self.dlon*1.01 if dlonCheck is None else dlonCheck
+        dlatCheck = self.dlat*1.01 if dlatCheck is None else dlatCheck
+        check = np.zeros((self.XX.shape[0],self.XX.shape[1],4))
+        for lat,lon in zip(latIn,lonIn):
+            ind = (abs(self.XX-lon)<=dlonCheck) * (abs(self.YY-lat)<=dlatCheck)
+            check[:,:,0] += (self.XX >= lon) * (self.YY >= lat) * ind
+            check[:,:,1] += (self.XX < lon)  * (self.YY >= lat) * ind
+            check[:,:,2] += (self.XX < lon)  * (self.YY < lat)  * ind
+            check[:,:,3] += (self.XX >= lon) * (self.YY < lat)  * ind
+        check = check > 0
+        mask = (check[:,:,0] * check[:,:,1] * check[:,:,2] * check[:,:,3]) == 0
+        return mask
+
+
+
+        # def checkWithIn(x,y,xData,yData,dxCheck,dyCheck):
+        #     s = 0
+        #     for dx in [-dxCheck,dxCheck]:
+        #         for dy in [-dyCheck,dyCheck]:
+        #             ind = (xData <= max(x,x+dx)) * (xData >= min(x,x+dx)) * \
+        #                 (yData <= max(y,y+dy)) * (yData >= min(y,y+dy))
+        #             s += ind.any()
+        #     return s == 4
+        # dlonCheck = self.dlon*1.01 if dlonCheck is None else dlonCheck
+        # dlatCheck = self.dlat*1.01 if dlatCheck is None else dlatCheck
+        # mask = np.ones(self.XX.shape,dtype=bool)
+        # for i in range(mask.shape[0]):
+        #     for j in range(mask.shape[1]):
+        #         mask[i,j] = not checkWithIn(self.lons[j],self.lats[i],lonIn,latIn,dlonCheck,dlatCheck)
+        # return mask
+
     def gradient(self,zIn):
         zGradx,zGrady = np.zeros(self.XX.shape),np.zeros(self.YY.shape)
         deltaLon,deltaLat = self.deltaXXkm,self.deltaYYkm
@@ -206,7 +239,6 @@ class GeoGrid():
         z[-1,-1]     = z[-2,-1]+z[-1,-2]-z[-2,-2]
         zLapla = (z[1:-1,2:]+z[1:-1,:-2]+(alpha**2)*(z[2:,1:-1]+z[:-2,1:-1])-2*(1+alpha**2)*z[1:-1,1:-1])/deltaLon/deltaLon
         return zLapla
-    
     
     def _findInd(self,lon,lat):
         j = np.where(abs(self.lons-lon)<=self.dlon/4)[0][0]
@@ -238,6 +270,15 @@ class GeoMap(GeoGrid):
         return super().gradient(self.z)
     def laplacian(self):
         return super().laplacian(self.z)
+    def cut(self,minlon,maxlon,minlat,maxlat):
+        lat_bnd, lon_bnd = [minlat,maxlat], [minlon,maxlon]
+        lat_ind = np.where((self.lats > lat_bnd[0]) & (self.lats < lat_bnd[1]))
+        lon_ind = np.where((self.lons > lon_bnd[0]) & (self.lons < lon_bnd[1]))
+        self.z = self.z[lat_ind[0],:]
+        self.z = self.z[:,lon_ind[0]]
+        self.lats = self.lats[lat_ind]
+        self.lons = self.lons[lon_ind]
+        pass
 
     def value(self,lon,lat):
         if (lon < 0) and self.type == '0 to 360':
@@ -286,6 +327,7 @@ class GeoMap(GeoGrid):
         else:
             minlon,maxlon,minlat,maxlat = area
         minlon,maxlon = minlon-360*(minlon>180),maxlon-360*(maxlon>180)
+        z = self.z if self.mask is False else np.ma.masked_array(self.z,mask=self.mask)
         import cartopy.crs as ccrs
         crsPlate = ccrs.PlateCarree()
         crs = ccrs.PlateCarree()
@@ -294,7 +336,7 @@ class GeoMap(GeoGrid):
         ax.set_extent((minlon, maxlon, minlat, maxlat))
         ax.coastlines()
         XX,YY = np.meshgrid(self.lons,self.lats)
-        im = ax.pcolormesh(XX,YY,self.z,cmap='rainbow')
+        im = ax.pcolormesh(XX,YY,z,cmap='rainbow')
         gl = ax.gridlines(draw_labels=True)
         gl.top_labels = False
         gl.right_labels = False
@@ -326,6 +368,24 @@ class GeoMap(GeoGrid):
         tmp = np.load(fname,allow_pickle=True)
         lons,lats,z,mask = tmp['lons'],tmp['lats'],tmp['z'],tmp['mask']
         self.__init__(lons,lats,z,mask)
+
+    def profile(self,lon1,lat1,lon2,lat2,xtype='km'):
+        geoDict = Geodesic.WGS84.Inverse(lat1,lon1,lat2,lon2)
+        x = np.linspace(0,geoDict['s12'],301)
+        z = np.ones(x.shape)*np.nan
+        for i,d in enumerate(x):
+            tmp = Geodesic.WGS84.Direct(lat1,lon1,geoDict['azi1'],d)
+            z[i] = self.value(tmp['lon2'],tmp['lat2'])
+        if xtype.lower() == 'km':
+            x = x/1000
+        elif xtype == 'lat':
+            x = np.linspace(lat1,lat2,301)
+        elif xtype == 'lon':
+            x = np.linspace(lon1,lon2,301)
+        else:
+            raise ValueError(f'{__class__.__name__}.{__name__}: Wrong xtype: {xtype}')
+        return x,z
+
 
 ''' deprecated '''
 class GeoSphere(GeoGrid):
@@ -418,20 +478,21 @@ class GeoSphere(GeoGrid):
 
 if __name__ == "__main__":
     
-    # import netCDF4 as nc
-    # with nc.Dataset('/home/ayu/SubdInv/models/ETOPO2v2g_f4.nc','r') as dataset:
-    #     lats	= dataset.variables['y'][:].data
-    #     lons	= dataset.variables['x'][:].data
-    #     ages	= dataset.variables['z'][:]/100.0
-    # oceAge = GeoMap(lons,lats,ages)
-    # print(oceAge.value(-122,45))
+    import netCDF4 as nc
+    with nc.Dataset('/home/ayu/Packages/etopo2/ETOPO2v2g_f4.nc','r') as dataset:
+        lats	= dataset.variables['y'][:].data
+        lons	= dataset.variables['x'][:].data
+        topo	= dataset.variables['z'][:]/1000.0
+    topoMap = GeoMap(lons,lats,topo)
+    print(topoMap.value(-122,45))
+    topoMap.profile(-131+360,43.0,-118+360,43.0)
 
-    age = np.random.randint(10,60,12)
-    Name = [f'Student{i:02d}' for i in range(1,13)]
-    grade = np.random.rand(12)*60
+    # age = np.random.randint(10,60,12)
+    # Name = [f'Student{i:02d}' for i in range(1,13)]
+    # grade = np.random.rand(12)*60
 
-    savetxt('test.txt',age,Name,grade)
-    data = loadtxt('test.txt')
+    # savetxt('test.txt',age,Name,grade)
+    # data = loadtxt('test.txt')
     # savetxt2('test.txt',{'Name':Name,'age':age,'grade':grade},fmt=['<10','<4','<8.2f'],
     #          header=True,header_fmt=['<10','<4','<8'])
     # data = loadtxt2('test.txt')

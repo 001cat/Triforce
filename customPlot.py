@@ -11,8 +11,10 @@ labelFont = {'weight':'normal','size':14}
 titleFont = {'weight':'bold','size':16}
 text_bbox = {'fc': '0.8', 'pad': 2}
 
+# plt.errorbar(x,y,yerr,ls='None',marker='o',capsize=3,capthick=2,elinewidth=2)
 
-coastlineData = '/home/ayu/SubdInv/models/ne_10m_coastline/ne_10m_coastline'
+
+coastlineData = '/home/ayu/Packages/ne_10m_coastline/ne_10m_coastline'
 physioData = os.path.dirname(__file__)+'/physio/physio' #https://water.usgs.gov/GIS/dsdl/physio_shp.zip
 
 ''' Geographic Maps '''
@@ -171,6 +173,16 @@ def plotGlobalCart(type='Plate',**kwargs):
     ax.coastlines()
     return ax,crsPlate
 
+def plotBasemap_Cascadia(loc=(-132,-121,39.5,50,4,3,-130,42),ax=None,paLable=[1,0,0,0],meLable=[0,0,0,1]):
+    minlon,maxlon,minlat,maxlat,dlon,dlat,lon0_tick,lat0_tick = loc
+    gridlines = {
+        'dlat':dlat,'lat0':lat0_tick,'latLocation':paLable,
+        'dlon':dlon,'lon0':lon0_tick,'lonLocation':meLable
+    }
+    fig,m = plotLocalBase(minlon,maxlon,minlat,maxlat,resolution='i',ax=ax,
+                          gridlines=gridlines,coastline=False,countries=False,states=False,
+                          plateBoundary=True)
+    return fig,m
 
 
 ''' Axis modifications'''
@@ -311,8 +323,8 @@ def cpt2cmap(cptfile,name='NewColorMap',N=256):
     norm = CustomNorm(normX,normY)
     return cmap,norm
 
-cvcpt = cpt2cmap(os.path.dirname(__file__)+'/cv_original.cpt','cv')[0]
-rbcpt = cpt2cmap(os.path.dirname(__file__)+'/rainbow.cpt','rainbow')[0].reversed()
+cvcpt = cpt2cmap(os.path.dirname(__file__)+'/cpts/cv_original.cpt','cv')[0]
+rbcpt = cpt2cmap(os.path.dirname(__file__)+'/cpts/rainbow.cpt','rainbow')[0].reversed()
 
 def buildBoundaryNorm(sep,N=256,n=None):
     n = N//(len(sep)-1) if n is None else n
