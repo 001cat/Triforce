@@ -9,3 +9,6 @@ mpl.rcParams['axes.titleweight'] = 'bold'
 
 # labelFont = {'weight':'normal','size':14}
 # titleFont = {'weight':'bold','size':16}
+
+# plt.errorbar(distT_JF_bin-0.5,ageT_JF_bin,uncerT_JF_bin,marker='o',
+#              capsize=3,capthick=2,elinewidth=2,label='Juan de Fuca')

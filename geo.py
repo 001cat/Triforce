@@ -104,7 +104,22 @@ def sphereDist(lon1,lat1,lon2,lat2,R=6371):
     return np.arccos(np.inner(wgs2vec(lon1,lat1),wgs2vec(lon2,lat2)))*R
     
 
+from Triforce.utils import GeoGrid,GeoMap
 
+def loadxyz(fname):
+    xyz = np.loadtxt(fname)
+    lats = np.sort(np.unique(xyz[:,0]))
+    lons = np.sort(np.unique(xyz[:,1]))
+    geoGrid = GeoGrid(lons,lats)
+    geoMaps = []
+    for indZ in range(2,xyz.shape[1]):
+        z = np.zeros(geoGrid.XX.shape)*np.nan
+        for row in xyz:
+            lon,lat = row[1],row[0]
+            i,j = geoGrid._findInd(lon,lat)
+            z[i,j] = row[indZ]
+        geoMaps.append(GeoMap(lons,lats,z))
+    return geoMaps
 
 
 if __name__ == '__main__':

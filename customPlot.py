@@ -3,6 +3,7 @@ import numpy as np
 import cartopy.crs as ccrs
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from typing import Tuple
 from mpl_toolkits.basemap import Basemap
 from geographiclib.geodesic import Geodesic
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap
@@ -24,7 +25,7 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat, projection='merc', resolution=
                   gridlines = {
                     'dlat':5.0,'lat0':None,'latLocation':[1,0,0,0],
                     'dlon':5.0,'lon0':None,'lonLocation':[0,0,0,1]
-                    }):
+                    }) -> Tuple[mpl.figure.Figure,Basemap]:
     ''' Plot base map with country, state boundaries '''
     minlon,maxlon = minlon-360*(minlon>180),maxlon-360*(maxlon>180)
     rsphere = (6378137.00,6356752.3142)
@@ -33,12 +34,13 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat, projection='merc', resolution=
     distNS = Geodesic.WGS84.Inverse(minlat, minlon, maxlat, minlon)['s12']
 
 
-    gridlines_tmp = gridlines
-    gridlines = {
-        'dlat':5.0,'lat0':None,'latLocation':[1,0,0,0],
-        'dlon':5.0,'lon0':None,'lonLocation':[0,0,0,1]
-    }
-    gridlines.update(gridlines_tmp)
+    if gridlines:
+        gridlines_tmp = gridlines
+        gridlines = {
+            'dlat':5.0,'lat0':None,'latLocation':[1,0,0,0],
+            'dlon':5.0,'lon0':None,'lonLocation':[0,0,0,1]
+        }
+        gridlines.update(gridlines_tmp)
 
     if ax is None:
         figwidth = 6.0
@@ -94,7 +96,7 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat, projection='merc', resolution=
             v[0][0].set_alpha(0.2)
     return (fig,m)
 
-def plotGlobalBase(figwidth=None,ax=None,resolution='l'):
+def plotGlobalBase(figwidth=None,ax=None,resolution='l') -> Tuple[mpl.figure.Figure,Basemap]:
     if ax is None:
         figwidth = 12.0 if figwidth is None else figwidth
     else:
@@ -328,7 +330,6 @@ rbcpt = cpt2cmap(os.path.dirname(__file__)+'/cpts/rainbow.cpt','rainbow')[0].rev
 
 def buildBoundaryNorm(sep,N=256,n=None):
     n = N//(len(sep)-1) if n is None else n
-    mpl.colors.BoundaryNorm
 
     boundaries = np.zeros(1+n*(len(sep)-1))
     boundaries[0] = sep[0]

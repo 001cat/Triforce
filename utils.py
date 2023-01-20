@@ -18,7 +18,7 @@ def savetxt(fname,*args):
                 s = s+f'{arg[i]} '
             s = s[:-1]+'\n'
             f.write(s)
-def savetxt2(fname,cols,fmt=None,header=False,header_fmt=None):
+def savetxt2(fname,cols:dict,fmt=None,header=False,header_fmt=None):
     def rowNumCheck():
         rowNums = [len(k) for k in cols.values()]
         if len(set(rowNums)) != 1:
@@ -107,10 +107,10 @@ class GeoGrid():
     def __init__(self,lons=[],lats=[]):
         self.lons = np.array(lons)
         self.lats = np.array(lats)
-        if np.any(self.lons > 180):
-            self._lon_type = '0 to 360'
-        else:
-            self._lon_type = '-180 to 180'
+        # if np.any(self.lons<0):
+        #     self._lon_range = '-180 to 180'
+        # else:
+        #     self._lon_range = '0 to 360'
 
     @property
     def dlon(self):
@@ -130,6 +130,11 @@ class GeoGrid():
     @property
     def deltaYYkm(self):
         return np.radians(self.dlat)*np.ones(self.YY.shape)*self.R
+    @property
+    def _lon_range(self):
+        if np.any(self.lons>180):
+            return '0 to 360'
+        return '-180 to 180'
 
     def interpCMD(self,latIn,lonIn,zIn,tension=0.0):
         import netCDF4 as nc4
@@ -239,11 +244,36 @@ class GeoGrid():
         z[-1,-1]     = z[-2,-1]+z[-1,-2]-z[-2,-2]
         zLapla = (z[1:-1,2:]+z[1:-1,:-2]+(alpha**2)*(z[2:,1:-1]+z[:-2,1:-1])-2*(1+alpha**2)*z[1:-1,1:-1])/deltaLon/deltaLon
         return zLapla
-    
+
     def _findInd(self,lon,lat):
         j = np.where(abs(self.lons-lon)<=self.dlon/4)[0][0]
         i = np.where(abs(self.lats-lat)<=self.dlat/4)[0][0]
         return i,j
+    def _findInd_linear_interp(self,lon,lat):
+        if (lon < 0) and self._lon_range == '0 to 360':
+            lon = lon + 360
+        if (lon > 180) and self._lon_range == '-180 to 180':
+            lon = lon - 360
+        if (lon-self.lons[0]) * (lon-self.lons[-1]) > 0:
+            # raise ValueError('Longitude is out of range!')
+            return None
+        if (lat-self.lats[0]) * (lat-self.lats[-1]) > 0:
+            # raise ValueError('Latitude is out of range!')
+            return None
+        try:
+            j = np.where(abs(self.lons-lon)<=self.dlon/100)[0][0]
+            i = np.where(abs(self.lats-lat)<=self.dlat/100)[0][0]
+            return (i,j)
+        except:
+            j = np.where(self.lons-lon>=0)[0][0]
+            i = np.where(self.lats-lat>=0)[0][0]
+            Dx = self.lons[j] - self.lons[j-1]
+            Dy = self.lats[i] - self.lats[i-1]
+            dx = lon - self.lons[j-1]
+            dy = lat - self.lats[i-1]
+            return (i,j,dx,dy,Dx,Dy)
+    def copy(self):
+        return GeoGrid(self.lons.copy(),self.lats.copy())
 
 @ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_char_p)
 def print_func_pygmt(file_pointer, message):
@@ -254,13 +284,14 @@ class GeoMap(GeoGrid):
     # if the map is a global one, you'd better set lons like: -180,...,180
     R = 6371.0
     def __init__(self,lons=[],lats=[],z=[],mask=False):
-        self.lons = np.array(lons)
-        self.lats = np.array(lats)
+        super().__init__(lons,lats)
+        # self.lons = np.array(lons)
+        # self.lats = np.array(lats)
         self.z    = np.array(z)
-        if np.any(self.lons<0):
-            self.type = '-180 to 180'
-        else:
-            self.type = '0 to 360'
+        # if np.any(self.lons<0):
+        #     self.type = '-180 to 180'
+        # else:
+        #     self.type = '0 to 360'
         self.mask=mask
     def interpCMD(self, latIn, lonIn, zIn, tension=0):
         self.z = super().interpCMD(latIn, lonIn, zIn, tension)
@@ -279,11 +310,63 @@ class GeoMap(GeoGrid):
         self.lats = self.lats[lat_ind]
         self.lons = self.lons[lon_ind]
         pass
+    
+    def _lon_range_change_to(self,lon_range):
+        if lon_range == self._lon_range:
+            return
+        if lon_range == '0 to 360':
+            if np.any(np.isclose(self.lons,180)) and np.any(np.isclose(self.lons,-180)):
+                self.lons = self.lons[:-1]
+                self.z    = self.z[:,:-1]
+            lons = self.lons + 360*(self.lons<0)
+            inds = np.argsort(lons)
+            lons,z = lons[inds],self.z[:,inds]
+            if np.any(np.isclose(self.lons,0)) and np.any(self.lons < 0) and np.any(self.lons > 0):
+                lons.append(360)
+                z = np.concatenate((z,z[:,0].reshape(-1,1)),axis=1)
+            self.lons,self.z = lons,z
+        elif lon_range == '-180 to 180':
+            if np.any(np.isclose(self.lons,0)) and np.any(np.isclose(self.lons,360)):
+                self.lons = self.lons[:-1]
+                self.z    = self.z[:,:-1]
+            lons = self.lons - 360*(self.lons>=180)
+            inds = np.argsort(lons)
+            lons,z = lons[inds],self.z[:,inds]
+            if np.any(np.isclose(self.lons,180)) and np.any(self.lons < 180) and np.any(self.lons > 180):
+                lons.append(180)
+                z = np.concatenate((z,z[:,0].reshape(-1,1)),axis=1)
+            self.lons,self.z = lons,z
+        else:
+            raise ValueError('Wrong _lon_range: should be 0 to 360 or -180 to 180')
+
 
     def value(self,lon,lat):
-        if (lon < 0) and self.type == '0 to 360':
+        indices = self._findInd_linear_interp(lon,lat)
+        if indices is None:
+            return np.nan
+        if len(indices) == 2:
+            i,j = indices
+            return self.z[i,j]
+        i,j,dx,dy,Dx,Dy = indices
+        if len(self.z.shape) == 2:
+            z0 = self.z[i-1,j-1]
+            z1 = self.z[i,j-1]
+            z2 = self.z[i-1,j]
+            z3 = self.z[i,j]
+        elif len(self.z.shape) == 3:
+            z0 = self.z[i-1,j-1,:]
+            z1 = self.z[i,j-1,:]
+            z2 = self.z[i-1,j,:]
+            z3 = self.z[i,j,:]
+        else:
+            raise ValueError()
+        z = z0+(z1-z0)*dy/Dy+(z2-z0)*dx/Dx+(z0+z3-z1-z2)*dx*dy/Dx/Dy
+        return z
+
+
+        if (lon < 0) and self._lon_range == '0 to 360':
             lon = lon + 360
-        if (lon > 180) and self.type == '-180 to 180':
+        if (lon > 180) and self._lon_range == '-180 to 180':
             lon = lon - 360
         if (lon-self.lons[0]) * (lon-self.lons[-1]) > 0:
             # raise ValueError('Longitude is out of range!')
@@ -317,16 +400,19 @@ class GeoMap(GeoGrid):
             dy = lat - self.lats[j-1]
             z = z0+(z1-z0)*dy/Dy+(z2-z0)*dx/Dx+(z0+z3-z1-z2)*dx*dy/Dx/Dy
             return z
-    def plot(self,area=None):
+    def plot(self,area=None,cmap='rainbow'):
         '''area = [minlon,maxlon,minlat,maxlat]'''
+        if self._lon_range == '0 to 360':
+            raise ValueError('Error in plotting: should convert to -180 to 180 first!')
         if area is None:
-            minlon = self.lons[0]-(self.lons[-1]-self.lons[0])/20
-            maxlon = self.lons[-1]+(self.lons[-1]-self.lons[0])/20
-            minlat = self.lats[0]-(self.lats[-1]-self.lats[0])/20
-            maxlat = self.lats[-1]+(self.lats[-1]-self.lats[0])/20
+            minlon = max(self.lons[0]-(self.lons[-1]-self.lons[0])/20,-180)
+            maxlon = min(self.lons[-1]+(self.lons[-1]-self.lons[0])/20,180)
+            minlat = max(self.lats[0]-(self.lats[-1]-self.lats[0])/20,-90)
+            maxlat = min(self.lats[-1]+(self.lats[-1]-self.lats[0])/20,90)
         else:
             minlon,maxlon,minlat,maxlat = area
-        minlon,maxlon = minlon-360*(minlon>180),maxlon-360*(maxlon>180)
+        # minlon,maxlon = minlon-360*(minlon>180),maxlon-360*(maxlon>180)
+        # from IPython import embed; embed()
         z = self.z if self.mask is False else np.ma.masked_array(self.z,mask=self.mask)
         import cartopy.crs as ccrs
         crsPlate = ccrs.PlateCarree()
@@ -336,7 +422,7 @@ class GeoMap(GeoGrid):
         ax.set_extent((minlon, maxlon, minlat, maxlat))
         ax.coastlines()
         XX,YY = np.meshgrid(self.lons,self.lats)
-        im = ax.pcolormesh(XX,YY,z,cmap='rainbow')
+        im = ax.pcolormesh(XX,YY,z,cmap=cmap)
         gl = ax.gridlines(draw_labels=True)
         gl.top_labels = False
         gl.right_labels = False
@@ -362,6 +448,14 @@ class GeoMap(GeoGrid):
             zSmooth = dset['z'][()]
         os.system(f'rm {tmpFname}* gmt.conf gmt.history')
         return GeoMap(self.lons,self.lats,zSmooth)
+    def decimate(self,geoGrid:GeoGrid):
+        lons,lats = geoGrid.lons.copy(),geoGrid.lats.copy()
+        newZ  = np.zeros(geoGrid.XX.shape)
+        for i in range(newZ.shape[0]):
+            for j in range(newZ.shape[1]):
+                lat,lon = lats[i],lons[j]
+                newZ[i,j]  = self.value(lon,lat)
+        return GeoMap(lons,lats,newZ)
     def save(self,fname):
         np.savez_compressed(fname,lons=self.lons,lats=self.lats,z=self.z,mask=self.mask)
     def load(self,fname):

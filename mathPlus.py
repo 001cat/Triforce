@@ -14,7 +14,19 @@ def gaussFit(t,f,start=[1,0,1]):
     A,mu,sig = leastsq(errorFun,start,args=(t,f))[0]
     return A,mu,abs(sig)
 
-def group_into_bins(binEdges,x,y,percentile=None):
+
+def group_into_bins(binEdges,x,y,yerr=None,percentile=None):
+    if np.ma.isMaskedArray(x) or np.ma.isMaskedArray(y) or np.ma.isMaskedArray(yerr):
+        mask_x = False if not np.ma.isMaskedArray(x) else x.mask
+        mask_y = False if not np.ma.isMaskedArray(y) else y.mask
+        mask_yerr = False if not np.ma.isMaskedArray(yerr) else yerr.mask
+        mask = mask_x + mask_y + mask_yerr
+        x,y = x[mask==0],y[mask==0]
+        yerr = None if yerr is None else yerr[mask==0]
+        x = x.compressed() if np.ma.isMaskedArray(x) else x
+        y = y.compressed() if np.ma.isMaskedArray(y) else y
+        yerr = yerr.compressed() if np.ma.isMaskedArray(yerr) else yerr
+    
     if binEdges.ndim == 1:
         binEdgesL,binEdgesH = binEdges[:-1],binEdges[1:]
     else:
@@ -23,16 +35,83 @@ def group_into_bins(binEdges,x,y,percentile=None):
     binAvg    = np.zeros(len(binEdgesL))*np.nan
     binStd    = np.zeros(len(binEdgesL))*np.nan
     for i in range(len(binEdgesL)):
+        binCenter[i] = (binEdgesH[i]+binEdgesL[i])/2
+
         Y = y[(x<=binEdgesH[i]) * (x>=binEdgesL[i])]
         if percentile is not None:
-            Y = Y[(Y>np.percentile(Y,percentile[0])) * (Y<np.percentile(Y,percentile[1]))]
-        binCenter[i] = (binEdgesH[i]+binEdgesL[i])/2
+            indPercentile = (Y>np.percentile(Y,percentile[0])) * (Y<np.percentile(Y,percentile[1]))
+            Y = Y[indPercentile]
         if Y.size == 0:
             continue
         binAvg[i]    = Y.mean()
         binStd[i]    = Y.std()
+
+        if yerr is not None:
+            Yerr = yerr[(x<=binEdgesH[i]) * (x>=binEdgesL[i])]
+            if percentile is not None:
+                Yerr = Yerr[indPercentile]
+            if Yerr.size == 0:
+                continue
+            binStd[i]    = np.sqrt(Y.std()**2 + Yerr.mean()**2)
     return binCenter,binAvg,binStd
 
+# def group_into_bins(binEdges,x,y,yerr=None,percentile=None):
+    
+#     if binEdges.ndim == 1:
+#         binEdgesL,binEdgesH = binEdges[:-1],binEdges[1:]
+#     else:
+#         binEdgesL,binEdgesH = binEdges[0],binEdges[1]
+#     binCenter = np.zeros(len(binEdgesL))
+#     binAvg    = np.zeros(len(binEdgesL))*np.nan
+#     binStd    = np.zeros(len(binEdgesL))*np.nan
+#     for i in range(len(binEdgesL)):
+#         binCenter[i] = (binEdgesH[i]+binEdgesL[i])/2
+
+#         Y = y[(x<=binEdgesH[i]) * (x>=binEdgesL[i])]
+#         if percentile is not None:
+#             Y = Y[(Y>np.percentile(Y,percentile[0])) * (Y<np.percentile(Y,percentile[1]))]
+#         if Y.size == 0:
+#             continue
+#         binAvg[i]    = Y.mean()
+#         binStd[i]    = Y.std()
+
+#         if yerr is not None:
+#             Yerr = yerr[(x<=binEdgesH[i]) * (x>=binEdgesL[i])]
+#             if percentile is not None:
+#                 Yerr = Yerr[(Y>np.percentile(Y,percentile[0])) * (Y<np.percentile(Y,percentile[1]))]
+#             if Yerr.size == 0:
+#                 continue
+#             binStd[i]    = np.sqrt(Y.std()**2 + Yerr.mean()**2)
+#     return binCenter,binAvg,binStd
+# def group_into_bins(binEdges,x,y,percentile=None):
+#     if binEdges.ndim == 1:
+#         binEdgesL,binEdgesH = binEdges[:-1],binEdges[1:]
+#     else:
+#         binEdgesL,binEdgesH = binEdges[0],binEdges[1]
+#     binCenter = np.zeros(len(binEdgesL))
+#     binAvg    = np.zeros(len(binEdgesL))*np.nan
+#     binStd    = np.zeros(len(binEdgesL))*np.nan
+#     for i in range(len(binEdgesL)):
+#         Y = y[(x<=binEdgesH[i]) * (x>=binEdgesL[i])]
+#         if percentile is not None:
+#             Y = Y[(Y>np.percentile(Y,percentile[0])) * (Y<np.percentile(Y,percentile[1]))]
+#         binCenter[i] = (binEdgesH[i]+binEdgesL[i])/2
+#         if Y.size == 0:
+#             continue
+#         binAvg[i]    = Y.mean()
+#         binStd[i]    = Y.std()
+#     return binCenter,binAvg,binStd
+
+def movingAvgSmooth(x,y):
+    from scipy.signal import savgol_filter
+    xmin,xmax = np.min(x),np.max(x)
+    bins = np.zeros((2,100))
+    bins[0,:] = xmin + (xmax-xmin)*np.linspace(-0.1,0.9,100)
+    bins[1,:] = xmin + (xmax-xmin)*np.linspace( 0.1,1.1,100)
+    newX,binAvg,_ = group_into_bins(bins,x,y)
+    newY = np.interp(newX,newX[~np.isnan(binAvg)],binAvg[~np.isnan(binAvg)])
+    newY = savgol_filter(newY, 21, 3)
+    return newX,newY
 
 def logQuad(foo,xI,xF):
     '''
