@@ -4,10 +4,12 @@ import matplotlib.pyplot as plt
 from netCDF4 import Dataset
 from geographiclib.geodesic import Geodesic
 
+
 def randString(N):
     import random,string
     ''' Return a random string '''
     return ''.join([random.choice(string.ascii_letters + string.digits) for i in range(N)])
+
 
 def savetxt(fname,*args):
     N = len(args[0])
@@ -39,7 +41,7 @@ def savetxt2(fname,cols:dict,fmt=None,header=False,header_fmt=None):
             s = ' '.join([f'{v:{fmt}}' for v,fmt in zip(cols.keys(),fmts_h)])+'\n'; f.write(s)
         for i in range(N):
             s = ' '.join([f'{v[i]:{fmt}}' for v,fmt in zip(cols.values(),fmts)])+'\n'; f.write(s)
-def str2digit(s):
+def _str2digit(s):
     if s in ['Nan','nan','None','none']:
         raise ValueError('Not supported yet')
     if s.isdigit():
@@ -56,11 +58,11 @@ def loadtxt(fname):
         for line in f.readlines():
             l = line.split()
             if init is False:
-                data = [ [str2digit(s)] for s in l ]
+                data = [ [_str2digit(s)] for s in l ]
                 init = True
                 continue
             for s,col in zip(l,data):
-                col.append(str2digit(s))
+                col.append(_str2digit(s))
     data = [col if type(col[0]) is str else np.array(col) for col in data]
     return data
 def loadtxt2(fname,header=False,ndarray=False):
@@ -83,11 +85,13 @@ def loadtxt2(fname,header=False,ndarray=False):
                 for i in range(len(l)):
                     data[f'col_{i}'] = []
             for v,s in zip(data.values(),l):
-                v.append(str2digit(s))
+                v.append(_str2digit(s))
     if ndarray:
         for k,v in data.items():
             data[k] = np.array(v)
     return data
+
+
 def get_current_memory() -> float: 
     ''' get memory usage of current process '''
     import os,psutil
@@ -98,6 +102,7 @@ def get_current_memory() -> float:
     # psutil.virtual_memory().available
     # psutil.swap_memory().percent
     return info.uss / 1024. / 1024.
+
 
 # gaussFun and gaussFit have been moved to math.py
 
