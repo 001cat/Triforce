@@ -4,6 +4,17 @@ import matplotlib.pyplot as plt
 from netCDF4 import Dataset
 from geographiclib.geodesic import Geodesic
 
+import subprocess
+try:
+    result = subprocess.run(['gmt', '--version'], stdout=subprocess.PIPE)
+    if result.stdout.decode().strip().split('.')[0] >= '6':
+        print('Warning: default GMT version >= 6, incompatible with GeoMap.smooth(). try /usr/bin/gmt instead')
+        gmtBin = '/usr/bin/gmt'
+        subprocess.run([gmtBin, '--version'], stdout=subprocess.PIPE)
+except:
+    raise ValueError('Package GMT not found!!!')
+
+
 
 def randString(N):
     import random,string
@@ -278,7 +289,7 @@ class GeoGrid():
             dy = lat - self.lats[i-1]
             return (i,j,dx,dy,Dx,Dy)
     def copy(self):
-        return GeoGrid(self.lons.copy(),self.lats.copy())
+        return self.__class__(self.lons.copy(),self.lats.copy())
 
 @ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_char_p)
 def print_func_pygmt(file_pointer, message):
@@ -435,7 +446,7 @@ class GeoMap(GeoGrid):
         # ax.set_yticks(np.arange(round(minlat),round(maxlat),(maxlat-minlat)//4), crs=ccrs.PlateCarree())
         fig.colorbar(im)
         return im
-    def smooth(self,tension=0.0, width=50.):
+    def smooth(self,tension=0.0, width=50.,noExtend=True):
         lons = self.lons.round(decimals=4)
         lats = self.lats.round(decimals=4)
         tmpFname = f'tmp{randString(10)}'
@@ -443,16 +454,18 @@ class GeoMap(GeoGrid):
         dlon,dlat = lons[1]-lons[0],lats[1]-lats[0]
         savetxt(f'{tmpFname}.xyz',XX.flatten(),YY.flatten(),self.z.flatten())
         with open(f'{tmpFname}.bash','w+') as f:
-            REG     = f'-R{lons[0]:.2f}/{lons[-1]:.2f}/{lats[0]:.2f}/{lats[-1]:.2f}'
-            f.writelines(f'gmt gmtset MAP_FRAME_TYPE fancy \n')
-            f.writelines(f'gmt surface {tmpFname}.xyz -T{tension} -G{tmpFname}.grd -I{dlon:.2f}/{dlat:.2f} {REG} \n')
-            f.writelines(f'gmt grdfilter {tmpFname}.grd -D4 -Fg{width} -G{tmpFname}_Smooth.grd {REG} \n')
+            REG     = f'-R{lons[0]:.4f}/{lons[-1]:.4f}/{lats[0]:.4f}/{lats[-1]:.4f}'
+            f.writelines(f'{gmtBin} gmtset MAP_FRAME_TYPE fancy \n')
+            f.writelines(f'{gmtBin} surface {tmpFname}.xyz -T{tension} -G{tmpFname}.grd -I{dlon:.4f}/{dlat:.4f} {REG} \n')
+            f.writelines(f'{gmtBin} grdfilter {tmpFname}.grd -D4 -Fg{width} -G{tmpFname}_Smooth.grd {REG} \n')
         os.system(f'bash {tmpFname}.bash')
         from netCDF4 import Dataset
         with Dataset(f'{tmpFname}_Smooth.grd') as dset:
             zSmooth = dset['z'][()]
+        if noExtend:
+            zSmooth[np.isnan(self.z)] = np.nan
         os.system(f'rm {tmpFname}* gmt.conf gmt.history')
-        return GeoMap(self.lons,self.lats,zSmooth)
+        return self.__class__(self.lons,self.lats,zSmooth)
     def decimate(self,geoGrid:GeoGrid):
         lons,lats = geoGrid.lons.copy(),geoGrid.lats.copy()
         newZ  = np.zeros(geoGrid.XX.shape)
@@ -460,13 +473,15 @@ class GeoMap(GeoGrid):
             for j in range(newZ.shape[1]):
                 lat,lon = lats[i],lons[j]
                 newZ[i,j]  = self.value(lon,lat)
-        return GeoMap(lons,lats,newZ)
+        return self.__class__(lons,lats,newZ)
     def save(self,fname):
         np.savez_compressed(fname,lons=self.lons,lats=self.lats,z=self.z,mask=self.mask)
     def load(self,fname):
         tmp = np.load(fname,allow_pickle=True)
         lons,lats,z,mask = tmp['lons'],tmp['lats'],tmp['z'],tmp['mask']
         self.__init__(lons,lats,z,mask)
+    def copy(self):
+        return self.__class__(self.lons.copy(),self.lats.copy(),self.z.copy())
 
     def profile(self,lon1,lat1,lon2,lat2,xtype='km'):
         geoDict = Geodesic.WGS84.Inverse(lat1,lon1,lat2,lon2)
@@ -486,6 +501,21 @@ class GeoMap(GeoGrid):
         return x,z
 
 
+def loadxyz(fname):
+    xyz = np.loadtxt(fname)
+    lats = np.sort(np.unique(xyz[:,0]))
+    lons = np.sort(np.unique(xyz[:,1]))
+    geoGrid = GeoGrid(lons,lats)
+    geoMaps = []
+    for indZ in range(2,xyz.shape[1]):
+        z = np.zeros(geoGrid.XX.shape)*np.nan
+        for row in xyz:
+            lon,lat = row[1],row[0]
+            i,j = geoGrid._findInd(lon,lat)
+            z[i,j] = row[indZ]
+        geoMaps.append(GeoMap(lons,lats,z))
+    return geoMaps
+
 ''' deprecated '''
 class GeoSphere(GeoGrid):
     def __init__(self, lons=[], lats=[]):
@@ -504,7 +534,7 @@ class GeoSphere(GeoGrid):
         with tempfile.TemporaryDirectory() as tmpdirname:
             np.savetxt(f'{tmpdirname}/fieldIn.tmp', list(zip(lonIn,latIn,zIn)), fmt='%g')
             R = f'{self.lons.min()}/{self.lons.max()}/{self.lats.min()}/{self.lats.max()}'
-            os.system(f'cd {tmpdirname} && gmt gmtset MAP_FRAME_TYPE fancy && gmt surface fieldIn.tmp -T{tension} -GfieldOut.grd -I{self.dlon}/{self.dlat} -R{R}')
+            os.system(f'cd {tmpdirname} && {gmtBin} gmtset MAP_FRAME_TYPE fancy && {gmtBin} surface fieldIn.tmp -T{tension} -GfieldOut.grd -I{self.dlon}/{self.dlat} -R{R}')
             try:
                 with nc4.Dataset(f'{tmpdirname}/fieldOut.grd','r') as f:
                     zOut = f.variables['z'][()]

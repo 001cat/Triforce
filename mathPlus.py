@@ -37,21 +37,22 @@ def group_into_bins(binEdges,x,y,yerr=None,percentile=None):
     for i in range(len(binEdgesL)):
         binCenter[i] = (binEdgesH[i]+binEdgesL[i])/2
 
-        Y = y[(x<=binEdgesH[i]) * (x>=binEdgesL[i])]
+        ind = (x<=binEdgesH[i]) * (x>=binEdgesL[i]) * (~np.isnan(y))
+        Y = y[ind]
+        if len(Y) == 0:
+            continue
         if percentile is not None:
             indPercentile = (Y>np.percentile(Y,percentile[0])) * (Y<np.percentile(Y,percentile[1]))
             Y = Y[indPercentile]
-        if Y.size == 0:
-            continue
+            if len(Y) == 0:
+                continue
         binAvg[i]    = Y.mean()
         binStd[i]    = Y.std()
 
         if yerr is not None:
-            Yerr = yerr[(x<=binEdgesH[i]) * (x>=binEdgesL[i])]
+            Yerr = yerr[ind]
             if percentile is not None:
                 Yerr = Yerr[indPercentile]
-            if Yerr.size == 0:
-                continue
             binStd[i]    = np.sqrt(Y.std()**2 + Yerr.mean()**2)
     return binCenter,binAvg,binStd
 

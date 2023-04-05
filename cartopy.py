@@ -118,3 +118,23 @@ def plotGlobalCart(mapType='Plate',**kwargs):
     ax.set_global()
     ax.coastlines()
     return ax,crsPlate
+
+
+
+# import cartopy.crs as ccrs
+# import cartopy.feature as cfeature
+# import matplotlib.pyplot as plt
+
+# fig = plt.figure(figsize=(3, 3))
+
+# ax = fig.add_subplot(1, 1, 1, projection=ccrs.LambertCylindrical())
+# ax.set_extent([-20, 60, -40, 45])
+# ax.add_feature(cfeature.LAND)
+# ax.add_feature(cfeature.OCEAN)
+# ax.add_feature(cfeature.COASTLINE)
+# ax.add_feature(cfeature.BORDERS, linestyle=':')
+# ax.add_feature(cfeature.LAKES, alpha=0.5)
+# ax.add_feature(cfeature.RIVERS)
+# ax.set_title('LambertCylindrical')
+
+# plt.savefig('LambertCylindrical.png', dpi=100)

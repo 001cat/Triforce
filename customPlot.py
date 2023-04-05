@@ -18,6 +18,13 @@ text_bbox = {'fc': '0.8', 'pad': 2}
 #     path_effects.Normal()
 # ])
 
+def labelSubplot(ax,label,x=0.03,y=0.97,kwargs={}):
+    bbox = dict(boxstyle='round,pad=0.1', facecolor='white', alpha=1, linewidth=0.1)
+    kwargsIn = dict(fontsize=18,fontweight='bold',ha='left',va='bottom',bbox=bbox)
+    kwargsIn.update(kwargs)
+    return ax.text(x,y,label,transform=ax.transAxes,**kwargsIn)
+
+
 ''' Axis modifications'''
 def addAxes(loc,hasTitle=True):
     ''' loc = [x,y,w,h] '''
@@ -84,6 +91,13 @@ def moveSpine(ax,move):
     else:
         raise ValueError('Wrong move command, should start with U/D/R/L')
     ax.set_position([x0,y0,x1-x0,y1-y0])
+
+def scaleGeoAxes(ax,factor = 1):
+    pos = ax.get_position()
+    # ratio = pos.width/pos.height
+    pos.x1 = (pos.x1-pos.x0)*factor+pos.x0
+    pos.y1 = (pos.y1-pos.y0)*factor+pos.y0
+    ax.set(position=pos)
 
 ''' colormap, cpt, norm '''
 class CustomNorm(mpl.colors.Normalize):
@@ -177,6 +191,7 @@ def cmapZoom(cmap,zOld=[0,0.45,0.55,1],zNew=[0,0.25,0.75,1],N=1024):
 
 
 ''' miscellaneous '''
+
 def colorCycle():
     fig = plt.figure()
     ax = fig.add_subplot()
