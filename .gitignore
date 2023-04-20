@@ -115,9 +115,10 @@ dmypy.json
 
 
 # Added manually
-physio
+/physio
 demos/CCM.IU.mseed
 /etopo1.jpg
+/PB2002
 
 # macOS
 *.DS_Store

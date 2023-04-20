@@ -59,7 +59,7 @@ def plotLocalCart(minlon, maxlon, minlat, maxlat, projection='merc',
         category='physical', name='land', scale='50m', edgecolor='face', facecolor=[0.8]*3),zorder=0)
 
     if plateBoundary:
-        reader = shpreader.Reader("/home/ayu/Projects/Cascadia/Models/Plates/PB2002_boundaries.shp")
+        reader = shpreader.Reader(os.path.dirname(__file__)+"/PB2002/PB2002_boundaries.shp")
         plateBoundary = [plate.geometry for plate in reader.records()]
         shape_feature = cfeature.ShapelyFeature(plateBoundary, crsPlate, facecolor=(1, 1, 1, 0), 
                                                 edgecolor='orange', lw=2)
