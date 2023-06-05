@@ -309,6 +309,9 @@ class GeoMap(GeoGrid):
         # else:
         #     self.type = '0 to 360'
         self.mask=mask
+    @property
+    def zMasked(self):
+        return np.ma.masked_array(self.z,mask=self.mask)
     def interpCMD(self, latIn, lonIn, zIn, tension=0):
         self.z = super().interpCMD(latIn, lonIn, zIn, tension)
     def interp(self, latIn, lonIn, zIn, tension=0):
@@ -354,7 +357,6 @@ class GeoMap(GeoGrid):
             self.lons,self.z = lons,z
         else:
             raise ValueError('Wrong _lon_range: should be 0 to 360 or -180 to 180')
-
 
     def value(self,lon,lat):
         indices = self._findInd_linear_interp(lon,lat)
@@ -416,7 +418,7 @@ class GeoMap(GeoGrid):
             dy = lat - self.lats[j-1]
             z = z0+(z1-z0)*dy/Dy+(z2-z0)*dx/Dx+(z0+z3-z1-z2)*dx*dy/Dx/Dy
             return z
-    def plot(self,area=None,cmap='rainbow'):
+    def plot(self,area=None,cmap='rainbow',**kwargs):
         '''area = [minlon,maxlon,minlat,maxlat]'''
         if self._lon_range == '0 to 360':
             raise ValueError('Error in plotting: should convert to -180 to 180 first!')
@@ -438,7 +440,7 @@ class GeoMap(GeoGrid):
         ax.set_extent((minlon, maxlon, minlat, maxlat))
         ax.coastlines()
         XX,YY = np.meshgrid(self.lons,self.lats)
-        im = ax.pcolormesh(XX,YY,z,cmap=cmap)
+        im = ax.pcolormesh(XX,YY,z,cmap=cmap,**kwargs)
         gl = ax.gridlines(draw_labels=True)
         gl.top_labels = False
         gl.right_labels = False
@@ -458,13 +460,18 @@ class GeoMap(GeoGrid):
             f.writelines(f'{gmtBin} gmtset MAP_FRAME_TYPE fancy \n')
             f.writelines(f'{gmtBin} surface {tmpFname}.xyz -T{tension} -G{tmpFname}.grd -I{dlon:.4f}/{dlat:.4f} {REG} \n')
             f.writelines(f'{gmtBin} grdfilter {tmpFname}.grd -D4 -Fg{width} -G{tmpFname}_Smooth.grd {REG} \n')
-        os.system(f'bash {tmpFname}.bash')
+        
+        # os.system(f'bash {tmpFname}.bash')
+        r = subprocess.run(['bash', f'{tmpFname}.bash'], stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        if ('Input data lie exactly on a plane.' not in r.stderr.decode()) and r.stderr.decode().split():
+            print(r.stderr.decode())
+        
         from netCDF4 import Dataset
         with Dataset(f'{tmpFname}_Smooth.grd') as dset:
             zSmooth = dset['z'][()]
         if noExtend:
             zSmooth[np.isnan(self.z)] = np.nan
-        os.system(f'rm {tmpFname}* gmt.conf gmt.history')
+        os.system(f'rm {tmpFname}* gmt.conf gmt.history > /dev/null 2>&1')
         return self.__class__(self.lons,self.lats,zSmooth)
     def decimate(self,geoGrid:GeoGrid):
         lons,lats = geoGrid.lons.copy(),geoGrid.lats.copy()

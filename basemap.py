@@ -6,7 +6,7 @@ from typing import Tuple
 from mpl_toolkits.basemap import Basemap
 from geographiclib.geodesic import Geodesic
 
-coastlineData = '/home/ayu/Packages/ne_10m_coastline/ne_10m_coastline'
+# coastlineData = '/home/ayu/Packages/ne_10m_coastline/ne_10m_coastline'
 physioData = os.path.dirname(__file__)+'/physio/physio' #https://water.usgs.gov/GIS/dsdl/physio_shp.zip
 
 
@@ -55,7 +55,7 @@ def plotLocalBase(minlon, maxlon, minlat, maxlat, projection='merc', resolution=
     m.fillcontinents()
 
     if plateBoundary:
-        m.readshapefile('/home/ayu/Projects/Cascadia/Models/Plates/PB2002_boundaries',
+        m.readshapefile(os.path.dirname(__file__)+"/PB2002/PB2002_boundaries",
                     'PB2002_boundaries',linewidth=2.0,color='orange')
 
     if topo is True:
