@@ -483,6 +483,17 @@ class GeoMap(GeoGrid):
         return self.__class__(lons,lats,newZ)
     def save(self,fname):
         np.savez_compressed(fname,lons=self.lons,lats=self.lats,z=self.z,mask=self.mask)
+    def saveNC4(self,fname):
+        with Dataset(fname,mode='w',format='NETCDF4_CLASSIC') as ncFile:
+            ncFile.createDimension('lon', len(self.lons))
+            ncFile.createDimension('lat', len(self.lats))
+            lons = ncFile.createVariable('lon', float, ('lon',))
+            lats = ncFile.createVariable('lat', float, ('lat',))
+            z    = ncFile.createVariable('z', float, ('lat','lon'))
+            lons[:] = self.lons[:]
+            lats[:] = self.lats[:]
+            z[:] = self.z[:]
+            z[self.mask] = np.nan
     def load(self,fname):
         tmp = np.load(fname,allow_pickle=True)
         lons,lats,z,mask = tmp['lons'],tmp['lats'],tmp['z'],tmp['mask']
