@@ -310,8 +310,13 @@ class GeoMap(GeoGrid):
         #     self.type = '0 to 360'
         self.mask=mask
     @property
-    def zMasked(self):
-        return np.ma.masked_array(self.z,mask=self.mask)
+    def zMasked(self,toNan=False):
+        if toNan:
+            z = self.z.copy()
+            z[self.mask] = np.nan
+            return z
+        else:
+            return np.ma.masked_array(self.z,mask=self.mask)
     def interpCMD(self, latIn, lonIn, zIn, tension=0):
         self.z = super().interpCMD(latIn, lonIn, zIn, tension)
     def interp(self, latIn, lonIn, zIn, tension=0):
@@ -378,7 +383,11 @@ class GeoMap(GeoGrid):
             z3 = self.z[i,j,:]
         else:
             raise ValueError()
+        if self.z.dtype == bool:
+            z0,z1,z2,z3 = map(float,(z0,z1,z2,z3))
         z = z0+(z1-z0)*dy/Dy+(z2-z0)*dx/Dx+(z0+z3-z1-z2)*dx*dy/Dx/Dy
+        if self.z.dtype == bool:
+            z = bool(z)
         return z
 
 
